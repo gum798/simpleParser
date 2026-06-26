@@ -67,3 +67,10 @@ test('깨진 단일 JSON 문서는 추출이 아니라 관용 복구', () => {
   expect(r.diagnostics.length).toBeGreaterThan(0);
   expect(typeof r.diagnostics[0].line).toBe('number');
 });
+
+test('콤마 빠진(중첩 배열 포함) 단일 문서는 a를 버리지 않고 복구', () => {
+  const r = formatJson('{"a":1 "b":[2,3]}');
+  expect(r.diagnostics.length).toBeGreaterThan(0); // 미씽 콤마 진단 유지
+  expect(r.output).toContain('"a"'); // 내부 [2,3]만 추출하고 a를 버리면 안 됨
+  expect(r.output).toContain('"b"');
+});

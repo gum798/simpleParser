@@ -1,5 +1,5 @@
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
-import { parseJsonTolerant, extractJsonBlocks } from './format/json';
+import { resolveJson } from './format/json';
 import { parseYamlTolerant } from './format/yaml';
 import { xmlDiagnostics } from './format/xml';
 
@@ -19,22 +19,16 @@ export function buildTree(text: string, fmt: Format): TreeResult {
 }
 
 function jsonTree(text: string): TreeResult {
-  // 1) 입력 전체가 유효한 JSON 문서면 그대로 트리화
-  try {
-    const value: unknown = JSON.parse(text);
-    return { root: valueToNode(value), diagnostics: [] };
-  } catch {
-    /* 단일 문서가 아님 → 추출/복구 시도 */
+  const r = resolveJson(text);
+  if (r.kind === 'value') {
+    return { root: valueToNode(r.value), diagnostics: [] };
   }
-  // 2) 로그/텍스트: 박힌 JSON 블록을 추출해 트리로 구성(여러 개면 배열로 묶음)
-  const blocks = extractJsonBlocks(text);
-  if (blocks.length > 0) {
-    const values = blocks.map((b) => JSON.parse(b) as unknown);
-    const root = values.length === 1 ? valueToNode(values[0]) : valueToNode(values);
+  if (r.kind === 'blocks') {
+    const root = r.values.length === 1 ? valueToNode(r.values[0]) : valueToNode(r.values);
     return { root, diagnostics: [] };
   }
-  // 3) 깨진 단일 문서는 관용 복구(partial 표시 + 진단)
-  return fromValue(parseJsonTolerant(text));
+  // 깨진 단일 문서는 관용 복구(partial 표시 + 진단)
+  return fromValue({ value: r.value, diagnostics: r.diagnostics });
 }
 
 function fromValue(parsed: { value: unknown; diagnostics: Diagnostic[] }): TreeResult {

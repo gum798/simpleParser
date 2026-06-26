@@ -19,24 +19,50 @@ export function parseJsonTolerant(text: string): { value: unknown; diagnostics: 
   return { value, diagnostics };
 }
 
-export function formatJson(text: string): FormatResult {
-  // 1) 입력 전체가 유효한 JSON 문서면 그대로 정렬
+export type JsonResolution =
+  | { kind: 'value'; value: unknown } // 전체가 유효한 단일 JSON
+  | { kind: 'blocks'; values: unknown[] } // 텍스트에서 추출한 JSON 블록들
+  | { kind: 'tolerant'; value: unknown; diagnostics: Diagnostic[] }; // 깨진 단일 문서의 관용 복구
+
+/**
+ * 입력을 JSON으로 해석한다. formatJson과 buildTree가 동일한 라우팅을 공유한다.
+ * 1) 전체가 유효 JSON → value
+ * 2) 주변 텍스트가 있는 경우(로그 등)만 박힌 블록 추출 → blocks
+ * 3) 그 외(전체가 하나의 깨진 괄호 구조 등) → 관용 복구 + 진단
+ */
+export function resolveJson(text: string): JsonResolution {
   try {
-    const value: unknown = JSON.parse(text);
-    return { output: JSON.stringify(value, null, 2), diagnostics: [] };
+    return { kind: 'value', value: JSON.parse(text) };
   } catch {
-    /* 단일 문서가 아님 → 추출/복구 시도 */
+    /* 단일 문서가 아님 → 추출/복구 판단 */
   }
-  // 2) 로그/텍스트에 박힌 JSON 블록을 모두 추출해 각각 정렬(빈 줄로 구분)
-  const blocks = extractJsonBlocks(text);
-  if (blocks.length > 0) {
-    const output = blocks.map((b) => JSON.stringify(JSON.parse(b), null, 2)).join('\n\n');
-    return { output, diagnostics: [] };
+  const spans = topLevelSpans(text);
+  // 전체가 (주변 공백 외엔) 하나의 괄호 구조면 '깨진 단일 문서'로 보고 추출하지 않는다.
+  // (예: `{"a":1 "b":[2,3]}` 의 내부 `[2,3]`만 뽑아 a와 진단을 버리는 일 방지)
+  const isWholeSingleSpan =
+    spans.length === 1 &&
+    text.slice(0, spans[0][0]).trim() === '' &&
+    text.slice(spans[0][1] + 1).trim() === '';
+  if (!isWholeSingleSpan) {
+    const blocks = extractJsonBlocks(text);
+    if (blocks.length > 0) {
+      return { kind: 'blocks', values: blocks.map((b) => JSON.parse(b) as unknown) };
+    }
   }
-  // 3) 깨진 단일 문서(예: 콤마 빠진 JSON)는 관용 복구 + 진단
   const { value, diagnostics } = parseJsonTolerant(text);
-  const output = value === undefined ? undefined : JSON.stringify(value, null, 2);
-  return { output, diagnostics };
+  return { kind: 'tolerant', value, diagnostics };
+}
+
+export function formatJson(text: string): FormatResult {
+  const r = resolveJson(text);
+  if (r.kind === 'value') {
+    return { output: JSON.stringify(r.value, null, 2), diagnostics: [] };
+  }
+  if (r.kind === 'blocks') {
+    return { output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'), diagnostics: [] };
+  }
+  const output = r.value === undefined ? undefined : JSON.stringify(r.value, null, 2);
+  return { output, diagnostics: r.diagnostics };
 }
 
 /**

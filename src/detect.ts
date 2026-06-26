@@ -36,8 +36,8 @@ export function detectFormat(text: string): Format {
     const nonWs = (s: string): number => s.replace(/\s+/g, '').length;
     const blocksChars = blocks.reduce((sum, b) => sum + nonWs(b), 0);
     const totalChars = nonWs(t);
-    if (totalChars > 0 && blocksChars / totalChars >= 0.5) {
-      return 'json';
+    if (totalChars > 0 && blocksChars / totalChars > 0.5) {
+      return 'json'; // 동률(정확히 절반)은 안전하게 markdown 유지
     }
   }
 
