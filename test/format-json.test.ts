@@ -47,3 +47,23 @@ test('JSON 없는 텍스트는 진단', () => {
   expect(r.output).toBeUndefined();
   expect(r.diagnostics.length).toBeGreaterThan(0);
 });
+
+test('대괄호 타임스탬프로 시작하는 로그도 추출', () => {
+  const r = formatJson('[2026-06-26 10:00:00] INFO body={"x":1}');
+  expect(r.diagnostics).toHaveLength(0);
+  expect(r.output).toBe('{\n  "x": 1\n}');
+});
+
+test('중첩된 비-JSON 안의 JSON도 추출', () => {
+  expect(extractJsonBlocks('Request{headers, body={"x":1}}')).toEqual(['{"x":1}']);
+});
+
+test('미닫힘 괄호가 많은 입력도 O(n)으로 빈 결과', () => {
+  expect(extractJsonBlocks('{a '.repeat(5000))).toEqual([]);
+});
+
+test('깨진 단일 JSON 문서는 추출이 아니라 관용 복구', () => {
+  const r = formatJson('{\n  "a": 1\n  "b": 2\n}'); // 콤마 누락 → 복구 + 진단
+  expect(r.diagnostics.length).toBeGreaterThan(0);
+  expect(typeof r.diagnostics[0].line).toBe('number');
+});

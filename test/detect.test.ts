@@ -12,9 +12,9 @@ test('YAML 시퀀스', () => expect(detectFormat('- one\n- two')).toBe('yaml'));
 test('마크다운 제목', () => expect(detectFormat('# 제목\n\n본문')).toBe('markdown'));
 test('빈 문자열은 markdown', () => expect(detectFormat('   ')).toBe('markdown'));
 test('평문은 markdown 폴백', () => expect(detectFormat('그냥 한 줄 텍스트')).toBe('markdown'));
-test('로그에 박힌 JSON은 json으로 감지', () =>
-  expect(detectFormat('2026 INFO body={"runId":"x","n":1}')).toBe('json'));
-test('JSON 코드펜스가 있는 마크다운은 markdown 유지', () =>
-  expect(detectFormat('# 제목\n\n```json\n{"a":1}\n```')).toBe('markdown'));
-test('한 줄 단일 키 콜론 산문은 markdown', () =>
-  expect(detectFormat('Note: this matters')).toBe('markdown'));
+test('JSON이 과반인 로그는 json으로 감지', () =>
+  expect(detectFormat('INFO body={"runId":"abc123","stage":"A","ok":true}')).toBe('json'));
+test('작은 JSON이 든 산문/마크다운은 json으로 오인하지 않음', () => {
+  expect(detectFormat('The API returns {"status":"ok"} on success.')).toBe('markdown');
+  expect(detectFormat('# 제목\n\n```json\n{"a":1}\n```')).toBe('markdown');
+});

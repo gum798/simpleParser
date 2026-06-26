@@ -19,17 +19,22 @@ export function buildTree(text: string, fmt: Format): TreeResult {
 }
 
 function jsonTree(text: string): TreeResult {
-  const trimmed = text.trim();
-  // 단일 JSON 문서는 기존 관용 파싱 경로(복구·진단)를 그대로 사용
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    return fromValue(parseJsonTolerant(text));
+  // 1) 입력 전체가 유효한 JSON 문서면 그대로 트리화
+  try {
+    const value: unknown = JSON.parse(text);
+    return { root: valueToNode(value), diagnostics: [] };
+  } catch {
+    /* 단일 문서가 아님 → 추출/복구 시도 */
   }
-  // 로그/텍스트: 박힌 JSON 블록을 추출해 트리로 구성(여러 개면 배열로 묶음)
+  // 2) 로그/텍스트: 박힌 JSON 블록을 추출해 트리로 구성(여러 개면 배열로 묶음)
   const blocks = extractJsonBlocks(text);
-  if (blocks.length === 0) return fromValue(parseJsonTolerant(text));
-  const values = blocks.map((b) => JSON.parse(b) as unknown);
-  const root = values.length === 1 ? valueToNode(values[0]) : valueToNode(values);
-  return { root, diagnostics: [] };
+  if (blocks.length > 0) {
+    const values = blocks.map((b) => JSON.parse(b) as unknown);
+    const root = values.length === 1 ? valueToNode(values[0]) : valueToNode(values);
+    return { root, diagnostics: [] };
+  }
+  // 3) 깨진 단일 문서는 관용 복구(partial 표시 + 진단)
+  return fromValue(parseJsonTolerant(text));
 }
 
 function fromValue(parsed: { value: unknown; diagnostics: Diagnostic[] }): TreeResult {

@@ -1,5 +1,6 @@
 import { parseDocument } from 'yaml';
 import type { Format } from './types';
+import { extractJsonBlocks } from './format/json';
 
 export function detectFormat(text: string): Format {
   const t = text.trim();
@@ -17,34 +18,30 @@ export function detectFormat(text: string): Format {
     return isWellFormedXml(t) ? 'xml' : 'html';
   }
 
-  // YAML: 맵/시퀀스로 파싱되고 에러가 없을 때만.
-  // 단, 한 줄짜리 단일 키(예: "Note: this matters")는 산문일 수 있어 제외 — 여러 항목이거나 여러 줄일 때만 YAML.
+  // YAML: 맵/시퀀스로 파싱되고 에러가 없을 때만 (평문 한 줄은 제외)
   try {
     const doc = parseDocument(t);
     const contents = doc.contents as { items?: unknown[] } | null;
-    const items = contents?.items;
-    if (doc.errors.length === 0 && Array.isArray(items) && items.length > 0 && (items.length >= 2 || /\n/.test(t))) {
+    if (doc.errors.length === 0 && contents && Array.isArray(contents.items) && contents.items.length > 0) {
       return 'yaml';
     }
   } catch {
     /* YAML 아님 */
   }
 
-  // 로그/텍스트에 박힌 JSON(예: body={"runId":...}): 마크다운 마커가 없을 때만 json으로 본다.
-  if (/[{[]\s*["[{]/.test(t) && !hasMarkdownMarkers(t)) {
-    return 'json';
+  // 로그/텍스트에 박힌 JSON: 실제 파싱되는 JSON 블록이 있고, 그 블록들이 내용의 과반(비공백 기준)을
+  // 차지할 때만 json으로 본다. (산문 속 작은 {..}가 통째로 json으로 오인돼 주변 텍스트가 사라지는 것 방지)
+  const blocks = extractJsonBlocks(t);
+  if (blocks.length > 0) {
+    const nonWs = (s: string): number => s.replace(/\s+/g, '').length;
+    const blocksChars = blocks.reduce((sum, b) => sum + nonWs(b), 0);
+    const totalChars = nonWs(t);
+    if (totalChars > 0 && blocksChars / totalChars >= 0.5) {
+      return 'json';
+    }
   }
 
   return 'markdown';
-}
-
-function hasMarkdownMarkers(t: string): boolean {
-  return (
-    /^#{1,6}\s/m.test(t) || // 제목
-    /^\s*[-*+]\s/m.test(t) || // 목록
-    /^\s*\d+\.\s/m.test(t) || // 번호 목록
-    /^```/m.test(t) // 코드 펜스
-  );
 }
 
 function isWellFormedXml(t: string): boolean {
