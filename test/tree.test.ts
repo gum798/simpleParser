@@ -41,6 +41,12 @@ test('Markdown은 트리 대신 경고', () => {
   expect(r.diagnostics[0].severity).toBe('warning');
 });
 
+test('로그의 박힌 JSON들을 트리로(여러 개는 배열로 묶음)', () => {
+  const r = buildTree('a body={"x":1} b body={"y":2}', 'json');
+  expect(r.root?.type).toBe('array');
+  expect(r.root?.children).toHaveLength(2);
+});
+
 test('renderTree는 접이식 DOM을 만든다', () => {
   const r = buildTree('{"a":1}', 'json');
   const el = renderTree(r.root!);

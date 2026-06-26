@@ -14,12 +14,17 @@ function toDiagnostic(severity: 'error' | 'warning') {
   };
 }
 
-export function parseYamlTolerant(text: string): { value: unknown; diagnostics: Diagnostic[] } {
+function parse(text: string): { doc: ReturnType<typeof parseDocument>; diagnostics: Diagnostic[] } {
   const doc = parseDocument(text, { prettyErrors: true });
   const diagnostics: Diagnostic[] = [
     ...doc.errors.map(toDiagnostic('error')),
     ...doc.warnings.map(toDiagnostic('warning')),
   ];
+  return { doc, diagnostics };
+}
+
+export function parseYamlTolerant(text: string): { value: unknown; diagnostics: Diagnostic[] } {
+  const { doc, diagnostics } = parse(text);
   let value: unknown;
   try {
     value = doc.toJS();
@@ -30,11 +35,7 @@ export function parseYamlTolerant(text: string): { value: unknown; diagnostics: 
 }
 
 export function formatYaml(text: string): FormatResult {
-  const doc = parseDocument(text, { prettyErrors: true });
-  const diagnostics: Diagnostic[] = [
-    ...doc.errors.map(toDiagnostic('error')),
-    ...doc.warnings.map(toDiagnostic('warning')),
-  ];
+  const { doc, diagnostics } = parse(text);
   let output: string | undefined;
   try {
     output = doc.contents != null ? String(doc) : undefined;

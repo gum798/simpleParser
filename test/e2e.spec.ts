@@ -29,6 +29,14 @@ test('깨진 JSON은 상태줄에 줄:열 에러를 표시', async ({ page }) =>
   await expect(page.locator('#status')).toContainText('줄');
 });
 
+test('로그에 박힌 JSON을 정렬로 추출', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"x":1}');
+  await page.getByRole('button', { name: '정렬' }).click();
+  await expect(page.locator('.cm-content')).toContainText('"x": 1');
+});
+
 test('Markdown 미리보기 렌더', async ({ page }) => {
   await page.goto('/');
   await page.locator('#format-select').selectOption('markdown');

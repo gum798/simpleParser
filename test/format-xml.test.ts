@@ -8,10 +8,11 @@ test('유효 XML은 들여쓰기되어 정렬', () => {
   expect(r.output).toContain('\n  <b>1</b>');
 });
 
-test('잘못된 XML은 진단을 내고 output은 없다', () => {
+test('잘못된 XML은 진단 + best-effort 정렬 출력(html 모드 폴백)', () => {
   const r = formatXml('<a><b></a>');
   expect(r.diagnostics.length).toBeGreaterThan(0);
   expect(r.diagnostics[0].severity).toBe('error');
+  expect(typeof r.output).toBe('string'); // 부분 결과 제공(스펙 §6)
 });
 
 test('xmlDiagnostics는 유효 XML에서 빈 배열', () => {

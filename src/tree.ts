@@ -1,12 +1,12 @@
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
-import { parseJsonTolerant } from './format/json';
+import { parseJsonTolerant, extractJsonBlocks } from './format/json';
 import { parseYamlTolerant } from './format/yaml';
 import { xmlDiagnostics } from './format/xml';
 
 export function buildTree(text: string, fmt: Format): TreeResult {
   switch (fmt) {
     case 'json':
-      return fromValue(parseJsonTolerant(text));
+      return jsonTree(text);
     case 'yaml':
       return fromValue(parseYamlTolerant(text));
     case 'xml':
@@ -16,6 +16,20 @@ export function buildTree(text: string, fmt: Format): TreeResult {
     case 'markdown':
       return { diagnostics: [{ message: 'Markdown은 트리뷰 대신 미리보기를 사용합니다', severity: 'warning' }] };
   }
+}
+
+function jsonTree(text: string): TreeResult {
+  const trimmed = text.trim();
+  // 단일 JSON 문서는 기존 관용 파싱 경로(복구·진단)를 그대로 사용
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return fromValue(parseJsonTolerant(text));
+  }
+  // 로그/텍스트: 박힌 JSON 블록을 추출해 트리로 구성(여러 개면 배열로 묶음)
+  const blocks = extractJsonBlocks(text);
+  if (blocks.length === 0) return fromValue(parseJsonTolerant(text));
+  const values = blocks.map((b) => JSON.parse(b) as unknown);
+  const root = values.length === 1 ? valueToNode(values[0]) : valueToNode(values);
+  return { root, diagnostics: [] };
 }
 
 function fromValue(parsed: { value: unknown; diagnostics: Diagnostic[] }): TreeResult {

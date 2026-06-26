@@ -58,10 +58,12 @@ export function mountApp(root: AppRoot): void {
 
   const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
 
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
   function showToast(msg: string): void {
     root.toast.textContent = msg;
     root.toast.hidden = false;
-    setTimeout(() => (root.toast.hidden = true), 2000);
+    if (toastTimer) clearTimeout(toastTimer); // 연속 토스트가 이전 타이머에 일찍 닫히지 않도록
+    toastTimer = setTimeout(() => (root.toast.hidden = true), 2000);
   }
 
   function applyDiagnostics(diags: Diagnostic[]): void {
@@ -80,18 +82,21 @@ export function mountApp(root: AppRoot): void {
     history.replaceState(null, '', '#' + encode({ v: 1, f: currentFormat, d: editor.getValue() }));
   }, 400);
 
-  const autodetect = debounce(() => {
-    if (manual) return;
-    const guess = detectFormat(editor.getValue());
-    if (guess !== currentFormat) {
-      currentFormat = guess;
-      editor.setLanguage(guess);
-      refreshToolbarForFormat();
+  const onEdit = debounce(() => {
+    if (!manual) {
+      const guess = detectFormat(editor.getValue());
+      if (guess !== currentFormat) {
+        currentFormat = guess;
+        editor.setLanguage(guess);
+        refreshToolbarForFormat();
+      }
     }
+    // 타이핑 중에도 진단을 재계산해 인라인 밑줄/상태줄이 오래된 채로 남지 않게 함
+    applyDiagnostics(format(editor.getValue(), currentFormat).diagnostics);
   }, 300);
 
   function onChange(): void {
-    autodetect();
+    onEdit();
     persist();
   }
 

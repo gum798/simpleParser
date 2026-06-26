@@ -1,4 +1,5 @@
 import xmlFormat from 'xml-formatter';
+import beautify from 'js-beautify';
 import type { Diagnostic, FormatResult } from '../types';
 
 export function xmlDiagnostics(text: string): Diagnostic[] {
@@ -23,7 +24,17 @@ export function formatXml(text: string): FormatResult {
   try {
     output = xmlFormat(text, { collapseContent: true, indentation: '  ', lineSeparator: '\n' });
   } catch {
-    output = undefined; // 잘못된 XML — 진단만 제공, 부분 트리는 tree.ts가 담당
+    // 잘못된 XML: html 모드로 best-effort 정렬(부분 결과) — 스펙 §6 폴백
+    try {
+      output = beautify.html(text, {
+        indent_size: 2,
+        wrap_line_length: 0,
+        preserve_newlines: true,
+        end_with_newline: false,
+      });
+    } catch {
+      output = undefined;
+    }
   }
   return { output, diagnostics };
 }
