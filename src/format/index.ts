@@ -2,6 +2,7 @@ import type { Format, FormatResult } from '../types';
 import { formatJson } from './json';
 import { formatYaml } from './yaml';
 import { formatXml } from './xml';
+import { formatHtml } from './html';
 
 export function format(text: string, fmt: Format): FormatResult {
   switch (fmt) {
@@ -11,8 +12,9 @@ export function format(text: string, fmt: Format): FormatResult {
       return formatYaml(text);
     case 'xml':
       return formatXml(text);
-    default:
-      // 임시 패스스루 — Task 5~7에서 교체
-      return { output: text, diagnostics: [] };
+    case 'html':
+      return formatHtml(text);
+    case 'markdown':
+      return { output: text, diagnostics: [] }; // v1: prettify 미지원
   }
 }
