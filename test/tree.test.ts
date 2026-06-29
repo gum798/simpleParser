@@ -79,11 +79,19 @@ test('값 없는 YAML 키도 크래시 없이 트리(null)로', () => {
 
 test('renderTree는 접이식 DOM을 만든다', () => {
   const r = buildTree('{"a":1}', 'json');
-  const el = renderTree(r.root!);
+  const el = renderTree(r.root!, () => {});
   expect(el.querySelectorAll('.tree-node').length).toBeGreaterThan(0);
   const toggle = el.querySelector('.tree-toggle') as HTMLButtonElement;
   const children = el.querySelector('.tree-children') as HTMLElement;
   expect(children.style.display).not.toBe('none');
   toggle.click();
   expect(children.style.display).toBe('none');
+});
+
+test('트리 라벨 클릭 시 onJump(node) 호출', () => {
+  const r = buildTree('{"a":1}', 'json');
+  const calls: string[] = [];
+  const el = renderTree(r.root!, (n) => calls.push(n.key ?? n.type));
+  (el.querySelector('.tree-label') as HTMLElement).click();
+  expect(calls.length).toBeGreaterThan(0);
 });

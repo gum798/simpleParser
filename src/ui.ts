@@ -1,5 +1,6 @@
-import type { Diagnostic, Format } from './types';
+import type { Diagnostic, Format, TreeNode } from './types';
 import { detectFormat } from './detect';
+import { approxFind } from './treeJump';
 import { format } from './format/index';
 import { buildTree, renderTree } from './tree';
 import { renderMarkdown } from './preview';
@@ -150,6 +151,11 @@ export function mountApp(root: AppRoot): void {
     persist();
   });
 
+  function jumpTo(node: TreeNode): void {
+    const r = node.pos ?? approxFind(editor.getValue(), node);
+    if (r) editor.revealRange(r.from, r.to);
+  }
+
   viewBtn.addEventListener('click', () => {
     if (!root.panel.hidden) {
       root.panel.hidden = true; // 이미 열려 있으면 닫기(토글, 스펙 §4.4)
@@ -164,7 +170,7 @@ export function mountApp(root: AppRoot): void {
       root.panel.appendChild(view);
     } else {
       const { root: treeRoot, diagnostics } = buildTree(editor.getValue(), currentFormat);
-      if (treeRoot) root.panel.appendChild(renderTree(treeRoot));
+      if (treeRoot) root.panel.appendChild(renderTree(treeRoot, jumpTo));
       applyDiagnostics(diagnostics);
     }
     root.panel.hidden = false;

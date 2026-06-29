@@ -175,19 +175,20 @@ function elementToNode(el: Element): TreeNode {
   };
 }
 
-export function renderTree(root: TreeNode): HTMLElement {
+export function renderTree(root: TreeNode, onJump: (node: TreeNode) => void): HTMLElement {
   const container = document.createElement('div');
   container.className = 'tree';
-  container.appendChild(renderNode(root));
+  container.appendChild(renderNode(root, onJump));
   return container;
 }
 
-function renderNode(node: TreeNode): HTMLElement {
+function renderNode(node: TreeNode, onJump: (node: TreeNode) => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'tree-node' + (node.partial ? ' partial' : '');
   const keyPart = node.key !== undefined ? `${node.key}: ` : '';
   const label = document.createElement('span');
   label.className = 'tree-label';
+  label.addEventListener('click', () => onJump(node));
 
   if (node.children && node.children.length) {
     const toggle = document.createElement('button');
@@ -195,7 +196,7 @@ function renderNode(node: TreeNode): HTMLElement {
     toggle.textContent = '▾';
     const childrenEl = document.createElement('div');
     childrenEl.className = 'tree-children';
-    node.children.forEach((c) => childrenEl.appendChild(renderNode(c)));
+    node.children.forEach((c) => childrenEl.appendChild(renderNode(c, onJump)));
     toggle.addEventListener('click', () => {
       const hidden = childrenEl.style.display === 'none';
       childrenEl.style.display = hidden ? '' : 'none';
