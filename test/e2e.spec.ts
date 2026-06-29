@@ -58,6 +58,23 @@ test('Markdown 미리보기 렌더', async ({ page }) => {
   await expect(page.locator('#panel .markdown-body h1')).toHaveText('안녕');
 });
 
+test('저장 팝업의 [닫기] 버튼이 다이얼로그를 닫는다', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '저장하기' }).click();
+  await expect(page.locator('#save-dialog')).toBeVisible();
+  await page.locator('#save-dialog').getByRole('button', { name: '닫기' }).click();
+  await expect(page.locator('#save-dialog')).toBeHidden();
+});
+
+test('저장 팝업을 닫은 뒤 하이라이트 메뉴가 다시 동작한다(모달이 막지 않음)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '저장하기' }).click();
+  await page.locator('#save-dialog').getByRole('button', { name: '닫기' }).click();
+  await expect(page.locator('#save-dialog')).toBeHidden();
+  await page.getByRole('button', { name: '하이라이트' }).click();
+  await expect(page.locator('#rules .rule-add')).toBeVisible();
+});
+
 test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 유지', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

@@ -187,7 +187,10 @@ export function mountApp(root: AppRoot): void {
   saveWarnEl.textContent = '링크가 길어 일부 메신저에서 잘릴 수 있습니다.';
   const saveForm = document.createElement('form');
   saveForm.method = 'dialog';
-  saveForm.appendChild(button('닫기'));
+  const saveCloseBtn = button('닫기');
+  // button() 헬퍼가 type='button'을 강제하므로 form method=dialog 제출이 안 됨 → 명시적으로 닫는다
+  saveCloseBtn.addEventListener('click', () => saveDialog.close());
+  saveForm.appendChild(saveCloseBtn);
   saveDialog.append(saveMsgEl, saveRestoreEl, saveUrlEl, saveWarnEl, saveForm);
   document.body.appendChild(saveDialog);
 
