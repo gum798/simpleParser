@@ -75,13 +75,20 @@ test('저장 팝업을 닫은 뒤 하이라이트 메뉴가 다시 동작한다(
   await expect(page.locator('#rules .rule-add')).toBeVisible();
 });
 
+test('하이라이트 패널을 열면 바로 입력 가능한 규칙 줄이 보인다', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '하이라이트' }).click();
+  // 빈 상태로 열어도 정규식 입력 칸이 바로 보여야 한다(패널이 '안 열린 것처럼' 보이지 않게)
+  await expect(page.locator('#rules .rule-regex')).toBeVisible();
+});
+
 test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 유지', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();
   await page.keyboard.type('hello world hello');
 
   await page.getByRole('button', { name: '하이라이트' }).click();
-  await page.getByRole('button', { name: '+ 규칙 추가' }).click();
+  // 패널을 열면 입력 줄이 자동으로 보이므로 바로 정규식 입력
   await page.locator('#rules .rule-regex').first().fill('hello');
 
   // 매칭 텍스트에 배경 스타일이 입은 mark 출현

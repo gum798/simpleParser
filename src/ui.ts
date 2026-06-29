@@ -7,7 +7,7 @@ import { renderMarkdown } from './preview';
 import { encode, decode } from './urlState';
 import { createEditor } from './editor';
 import { debounce } from './util/debounce';
-import { mountRulesPanel } from './rulesPanel';
+import { mountRulesPanel, createRule } from './rulesPanel';
 import { loadRules, saveRules } from './highlight/store';
 
 const FORMATS: Format[] = ['json', 'html', 'xml', 'yaml', 'markdown'];
@@ -69,18 +69,20 @@ export function mountApp(root: AppRoot): void {
 
   const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
 
+  let currentRules = loadRules();
   const rulesPanel = mountRulesPanel(root.rules, (rs) => {
+    currentRules = rs;
     saveRules(rs);
     editor.setHighlightRules(rs);
   });
-  {
-    const loaded = loadRules();
-    rulesPanel.render(loaded);
-    editor.setHighlightRules(loaded);
-  }
+  rulesPanel.render(currentRules);
+  editor.setHighlightRules(currentRules);
 
   highlightBtn.addEventListener('click', () => {
+    const opening = root.rules.hidden;
     root.rules.hidden = !root.rules.hidden;
+    // 빈 상태로 열면 입력 가능한 규칙 줄을 바로 보여줘 '패널이 안 열린 것처럼' 보이지 않게 함
+    if (opening && currentRules.length === 0) rulesPanel.render([createRule()]);
   });
 
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
