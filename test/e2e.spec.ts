@@ -116,6 +116,31 @@ test('압축 JSON을 붙여넣으면 자동으로 정렬된다(버튼 없이)', 
   await expect(page.locator('.cm-content')).toContainText('"a": 1');
 });
 
+test('자동 정렬은 주변 텍스트를 지우지 않는다(붙여넣기 데이터 손실 방지)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#format-select').selectOption('json'); // 수동 JSON → 감지 우회, 자동 정렬 경로 강제
+  await page.locator('.cm-content').click();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '앞 텍스트 {"a":1} 뒤 텍스트');
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  // 비파괴 정렬이 아니므로(JSON 추출은 내용 변경) 자동 적용 보류 → 주변 텍스트가 그대로 남는다
+  await expect(page.locator('.cm-content')).toContainText('앞 텍스트');
+  await expect(page.locator('.cm-content')).toContainText('뒤 텍스트');
+});
+
+test('타이핑은 자동 정렬을 유발하지 않는다(붙여넣기에만, 너무 자주 방지)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"x":9,"y":8}'); // 한 글자씩 입력 = 타이핑 경로
+  await page.waitForTimeout(500); // 디바운스/유휴 콜백이 돌 시간을 충분히 준다
+  // 타이핑에는 paste 리스너가 안 걸리므로 압축 상태 유지(정렬됐다면 '"x": 9'처럼 공백이 생김)
+  await expect(page.locator('.cm-content')).not.toContainText('"x": 9');
+});
+
 test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

@@ -24,6 +24,16 @@ export function shouldAutoFormat(text: string, fmt: Format): boolean {
   return text.trim() !== '' && text.length <= AUTO_FORMAT_MAX && canFormat(fmt);
 }
 
+/**
+ * 두 문자열이 공백(들여쓰기/줄바꿈)만 다르고 그 외 문자는 동일하면 true.
+ * 자동(붙여넣기) 정렬이 '비파괴 재들여쓰기'인지 판별하는 데 쓴다 — false면 정렬이 내용을
+ * 바꾼다는 뜻이므로(로그 속 JSON 추출, 주석 제거, 중복키 병합 등) 자동 적용을 보류한다.
+ * 문자열 내부 공백도 양쪽에서 똑같이 제거되므로 비교에 영향을 주지 않는다.
+ */
+export function isReindentOnly(input: string, output: string): boolean {
+  return input.replace(/\s+/g, '') === output.replace(/\s+/g, '');
+}
+
 export function viewLabel(fmt: Format): string {
   return fmt === 'markdown' ? '미리보기' : '트리';
 }
@@ -142,16 +152,22 @@ export function mountApp(root: AppRoot): void {
     persist();
   });
 
-  function runFormat(): void {
-    const before = format(editor.getValue(), currentFormat);
+  // safeOnly=true(자동/붙여넣기 경로)일 때는 '들여쓰기만 바뀌는 비파괴 정렬'만 적용한다.
+  // 수동 [정렬] 버튼(safeOnly 없음)은 기존대로 로그 속 JSON 추출 등 적극적 정렬을 그대로 수행.
+  function runFormat(opts?: { safeOnly?: boolean }): void {
+    const input = editor.getValue();
+    const before = format(input, currentFormat);
     if (before.output !== undefined) {
       // 안전 정책: 정렬 결과가 새 에러를 만들면 보류
       const after = format(before.output, currentFormat);
-      if (after.diagnostics.length <= before.diagnostics.length) {
+      const noNewErrors = after.diagnostics.length <= before.diagnostics.length;
+      // 자동 경로는 내용이 보존되는(공백만 바뀌는) 경우에만 적용 → 추출/주석제거/중복키병합 자동 저지름 방지
+      const contentPreserved = !opts?.safeOnly || isReindentOnly(input, before.output);
+      if (noNewErrors && contentPreserved) {
         editor.setValue(before.output);
         applyDiagnostics(after.diagnostics); // 교체된 새 내용에 맞는 진단(오프셋 일치)
       } else {
-        showToast('정렬을 보류했습니다(원문 보존)');
+        if (!opts?.safeOnly) showToast('정렬을 보류했습니다(원문 보존)');
         applyDiagnostics(before.diagnostics);
       }
     } else {
@@ -159,12 +175,13 @@ export function mountApp(root: AppRoot): void {
     }
     persist();
   }
-  formatBtn.addEventListener('click', runFormat);
+  formatBtn.addEventListener('click', () => runFormat());
 
-  // 유휴 시간에 자동 정렬을 돌려 붙여넣기/렌더를 막지 않는다(requestIdleCallback 미지원 시 setTimeout 폴백).
+  // 유휴 시간에 자동 정렬을 돌려 붙여넣기/렌더를 막지 않는다. timeout으로 바쁜 메인스레드에서도 결국 실행.
+  // requestIdleCallback 미지원(구형 Safari 등) 시 setTimeout 폴백.
   const idle: (cb: () => void) => void =
     typeof window.requestIdleCallback === 'function'
-      ? (cb) => void window.requestIdleCallback(cb)
+      ? (cb) => void window.requestIdleCallback(cb, { timeout: 1000 })
       : (cb) => void setTimeout(cb, 0);
 
   function autoParse(): void {
@@ -179,15 +196,19 @@ export function mountApp(root: AppRoot): void {
         refreshToolbarForFormat();
       }
     }
-    // 자동 정렬은 작은 입력만(저부하). 큰 입력은 정렬 보류 + 안내만(정렬 가능한 포맷일 때만 안내).
-    if (shouldAutoFormat(text, currentFormat)) runFormat();
+    // 자동 정렬은 작은 입력 + 비파괴 정렬만(safeOnly). 큰 입력은 안내만(정렬 가능한 포맷일 때).
+    if (shouldAutoFormat(text, currentFormat)) runFormat({ safeOnly: true });
     else if (text.length > AUTO_FORMAT_MAX && canFormat(currentFormat)) {
       showToast('큰 입력 — [정렬]을 눌러 직접 정렬하세요');
     }
   }
 
-  // 붙여넣기에만 자동 정렬을 건다(타이핑 중엔 안 함 → '너무 자주' 방지). paste는 contentDOM에서 버블링됨.
-  root.editorHost.addEventListener('paste', () => idle(autoParse));
+  // 붙여넣기에만 자동 정렬을 건다(타이핑 중엔 안 함 → '너무 자주' 방지).
+  // 단, 에디터 본문(.cm-content)에 붙여넣은 경우만 — 검색/치환 입력칸 등 내부 input 붙여넣기는 제외.
+  root.editorHost.addEventListener('paste', (e) => {
+    const content = root.editorHost.querySelector('.cm-content');
+    if (content && e.target instanceof Node && content.contains(e.target)) idle(autoParse);
+  });
 
   function jumpTo(node: TreeNode): void {
     const r = node.pos ?? approxFind(editor.getValue(), node);
