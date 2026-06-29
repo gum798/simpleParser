@@ -5,7 +5,7 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
 #status { padding: 4px 8px; font-size: 12px; border-top: 1px solid #8884; }
 #toolbar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid #8884; align-items: center; }
 #toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
-#panel { order: -1; width: 34%; max-width: 480px; max-height: none; overflow: auto;
+#panel { order: -1; width: 34%; max-width: 480px; max-height: none; overflow: auto; padding: 8px;
   border-top: none; border-right: 1px solid #8884; }
 .tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
 .tree-label { cursor: pointer; }

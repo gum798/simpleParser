@@ -25,7 +25,9 @@ export type JsonResolution =
   | { kind: 'tolerant'; value: unknown; diagnostics: Diagnostic[] }; // 깨진 단일 문서의 관용 복구
 
 /**
- * 입력을 JSON으로 해석한다. formatJson과 buildTree가 동일한 라우팅을 공유한다.
+ * 입력을 JSON으로 해석한다(formatJson 전용).
+ * 주의: buildTree(tree.ts)는 노드 위치(pos) 캡처를 위해 parseTree 기반으로 같은 라우팅
+ * (validWhole / isWholeSingleSpan)을 별도로 재현한다 — 한쪽 휴리스틱을 바꾸면 다른 쪽도 맞출 것.
  * 1) 전체가 유효 JSON → value
  * 2) 주변 텍스트가 있는 경우(로그 등)만 박힌 블록 추출 → blocks
  * 3) 그 외(전체가 하나의 깨진 괄호 구조 등) → 관용 복구 + 진단

@@ -113,7 +113,7 @@ function yamlNodeToTree(node: unknown, key: string | undefined): TreeNode {
   if (isScalar(node)) {
     return { key, type: 'scalar', value: node.value === null ? 'null' : String(node.value), pos };
   }
-  return { key, type: 'scalar', value: node == null ? 'null' : String(node), pos };
+  return { key, type: 'scalar', value: String(node), pos }; // node != null (상단 가드)
 }
 
 function fromValue(parsed: { value: unknown; diagnostics: Diagnostic[] }): TreeResult {
