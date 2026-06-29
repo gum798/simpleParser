@@ -1,3 +1,5 @@
+import type { HighlightRule } from './highlight/matcher';
+
 export type Format = 'json' | 'html' | 'xml' | 'yaml' | 'markdown';
 
 export interface Diagnostic {
@@ -37,4 +39,7 @@ export interface State {
   v: 1;
   f: Format;
   d: string;
+  r?: HighlightRule[]; // 하이라이트 규칙(옵션) — 없으면 localStorage 기본값으로 폴백
+  p?: boolean; // 트리/미리보기 패널 열림 여부
+  h?: boolean; // 하이라이트 규칙 패널 열림 여부
 }

@@ -155,3 +155,34 @@ test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ p
   await page.locator('#panel .tree-label', { hasText: 'beta' }).first().click();
   await expect(page.locator('.cm-editor .cm-selectionBackground').first()).toBeVisible();
 });
+
+test('트리 패널 열림 상태가 URL에 저장되어 새로고침 후에도 유지', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await page.getByRole('button', { name: '트리' }).click();
+  await expect(page.locator('#panel .tree-node').first()).toBeVisible();
+  await page.waitForTimeout(500); // persist(디바운스 400ms)가 해시에 반영될 시간
+  await page.reload();
+  // localStorage가 아니라 URL 해시가 운반 → 새로고침해도 트리가 열려 있다
+  await expect(page.locator('#panel .tree-node').first()).toBeVisible();
+});
+
+test('하이라이트 규칙이 URL로 공유된다(빈 localStorage 새 세션에서도 복원)', async ({ page, browser }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('hello');
+  await page.getByRole('button', { name: '하이라이트' }).click();
+  await page.locator('#rules .rule-regex').first().fill('hello');
+  await page.waitForTimeout(500); // 규칙 편집 → persist 반영
+  const shared = page.url();
+  expect(shared).toContain('#');
+
+  // 독립 localStorage를 가진 새 컨텍스트에서 공유 링크 열기 → 규칙은 URL에서만 올 수 있다
+  const ctx = await browser.newContext();
+  const fresh = await ctx.newPage();
+  await fresh.goto(shared);
+  // h=true도 URL에 저장돼 규칙 패널이 자동으로 열려 있음 → 입력칸에 정규식이 복원
+  await expect(fresh.locator('#rules .rule-regex').first()).toHaveValue('hello');
+  await ctx.close();
+});

@@ -20,12 +20,17 @@ function isRule(x: unknown): x is HighlightRule {
   );
 }
 
+/** 임의 입력(localStorage/URL)에서 유효한 규칙만 추려낸다 — 색상 주입 등 방어. */
+export function sanitizeRules(value: unknown): HighlightRule[] {
+  return Array.isArray(value) ? value.filter(isRule) : [];
+}
+
 export function loadRules(): HighlightRule[] {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isRule) : [];
+    return sanitizeRules(parsed);
   } catch {
     return [];
   }
