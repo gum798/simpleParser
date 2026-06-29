@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('정렬 → 트리 → 공유 → 새로고침 복원', async ({ page }) => {
+test('정렬 → 트리 → 저장 → 새로고침 복원', async ({ page }) => {
   await page.goto('/');
   const editor = page.locator('.cm-content');
   await editor.click();
@@ -12,12 +12,23 @@ test('정렬 → 트리 → 공유 → 새로고침 복원', async ({ page }) =>
   await page.getByRole('button', { name: '트리' }).click();
   await expect(page.locator('#panel .tree-node').first()).toBeVisible();
 
-  await page.getByRole('button', { name: '공유' }).click();
+  await page.getByRole('button', { name: '저장하기' }).click();
+  await expect(page.locator('#save-dialog')).toBeVisible();
+  await expect(page.locator('#save-dialog .save-url')).toHaveValue(/#/);
   await expect.poll(() => page.url()).toContain('#');
 
   const shared = page.url();
   await page.goto(shared);
   await expect(page.locator('.cm-content')).toContainText('"a"');
+});
+
+test('Cmd/Ctrl+S 단축키로 저장 팝업 표시', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"k":1}');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.locator('#save-dialog')).toBeVisible();
+  await expect(page.locator('#save-dialog .save-url')).toHaveValue(/#/);
 });
 
 test('깨진 JSON은 상태줄에 줄:열 에러를 표시', async ({ page }) => {
