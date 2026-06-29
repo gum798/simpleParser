@@ -18,6 +18,12 @@ const langFor: Record<Format, () => ReturnType<typeof json>> = {
   markdown,
 };
 
+export function clampRange(from: number, to: number, len: number): { from: number; to: number } {
+  const a = Math.max(0, Math.min(from, len));
+  const b = Math.max(0, Math.min(to, len));
+  return { from: Math.min(a, b), to: Math.max(a, b) };
+}
+
 export function toCmDiagnostics(text: string, diags: Diagnostic[]): CmDiagnostic[] {
   // offset 없는 진단(예: XML)은 인라인 밑줄 위치를 알 수 없으므로 제외 — 상태줄 메시지로만 표시(스펙 §7)
   return diags
@@ -35,6 +41,7 @@ export interface Editor {
   setLanguage(fmt: Format): void;
   setDiagnostics(d: Diagnostic[]): void;
   setHighlightRules(rules: HighlightRule[]): void;
+  revealRange(from: number, to: number): void;
 }
 
 export function createEditor(
@@ -72,5 +79,10 @@ export function createEditor(
       forceLinting(view);
     },
     setHighlightRules: (rules) => applyHighlightRules(view, rules),
+    revealRange: (from, to) => {
+      const { from: a, to: b } = clampRange(from, to, view.state.doc.length);
+      view.dispatch({ selection: { anchor: a, head: b }, scrollIntoView: true });
+      view.focus();
+    },
   };
 }
