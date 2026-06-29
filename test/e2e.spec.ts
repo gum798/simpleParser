@@ -57,3 +57,21 @@ test('Markdown 미리보기 렌더', async ({ page }) => {
   await page.getByRole('button', { name: '미리보기' }).click();
   await expect(page.locator('#panel .markdown-body h1')).toHaveText('안녕');
 });
+
+test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 유지', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('hello world hello');
+
+  await page.getByRole('button', { name: '하이라이트' }).click();
+  await page.getByRole('button', { name: '+ 규칙 추가' }).click();
+  await page.locator('#rules .rule-regex').first().fill('hello');
+
+  // 매칭 텍스트에 배경 스타일이 입은 mark 출현
+  await expect(page.locator('.cm-content span[style*="background-color"]').first()).toBeVisible();
+
+  // 새로고침 후에도 규칙이 localStorage에서 복원
+  await page.reload();
+  await page.getByRole('button', { name: '하이라이트' }).click();
+  await expect(page.locator('#rules .rule-regex').first()).toHaveValue('hello');
+});
