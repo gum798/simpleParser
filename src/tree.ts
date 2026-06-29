@@ -93,6 +93,7 @@ function yamlTree(text: string): TreeResult {
 }
 
 function yamlNodeToTree(node: unknown, key: string | undefined): TreeNode {
+  if (node == null) return { key, type: 'scalar', value: 'null' };
   const range = (node as { range?: [number, number, number] | null }).range ?? undefined;
   const pos = range ? { from: range[0], to: range[1] } : undefined;
   if (isMap(node)) {

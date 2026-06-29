@@ -70,6 +70,13 @@ test('YAML 트리 노드는 정확한 소스 pos를 가진다', () => {
   expect(text.slice(b.pos!.from, b.pos!.to)).toBe('two');
 });
 
+test('값 없는 YAML 키도 크래시 없이 트리(null)로', () => {
+  const r = buildTree('{a: 1, b}', 'yaml'); // b는 값 없는 키 → AST에서 JS null
+  expect(r.root?.type).toBe('object');
+  const b = r.root?.children?.find((c) => c.key === 'b');
+  expect(b?.value).toBe('null');
+});
+
 test('renderTree는 접이식 DOM을 만든다', () => {
   const r = buildTree('{"a":1}', 'json');
   const el = renderTree(r.root!);
