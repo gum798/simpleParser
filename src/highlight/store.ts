@@ -1,6 +1,7 @@
 import type { HighlightRule } from './matcher';
 
 const KEY = 'simpleparser.highlightRules';
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 function isRule(x: unknown): x is HighlightRule {
   const r = x as Record<string, unknown>;
@@ -11,8 +12,11 @@ function isRule(x: unknown): x is HighlightRule {
     typeof r.name === 'string' &&
     typeof r.regex === 'string' &&
     typeof r.enabled === 'boolean' &&
+    // 색상은 #rrggbb만 허용 — 손으로 고친 localStorage 값이 style 속성에 임의 CSS를 주입하는 것 방지(방어적)
     typeof r.textColor === 'string' &&
-    typeof r.bgColor === 'string'
+    HEX_COLOR.test(r.textColor) &&
+    typeof r.bgColor === 'string' &&
+    HEX_COLOR.test(r.bgColor)
   );
 }
 

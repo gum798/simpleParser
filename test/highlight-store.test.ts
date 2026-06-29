@@ -24,3 +24,9 @@ test('배열이지만 형식이 틀린 항목은 걸러냄', () => {
   localStorage.setItem('simpleparser.highlightRules', JSON.stringify([r, { id: 1 }]));
   expect(loadRules()).toEqual([r]);
 });
+
+test('색상이 #rrggbb 형식이 아니면 걸러냄(CSS 주입 방지)', () => {
+  const bad = { ...r, id: 'b', bgColor: 'red;background:url(http://x)' };
+  localStorage.setItem('simpleparser.highlightRules', JSON.stringify([r, bad]));
+  expect(loadRules()).toEqual([r]);
+});
