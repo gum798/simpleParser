@@ -1,3 +1,5 @@
+import safeRegex from 'safe-regex';
+
 export interface HighlightRule {
   id: string;
   name: string;
@@ -30,7 +32,9 @@ export function isValidRegex(pattern: string): boolean {
 
 export function compileRules(rules: HighlightRule[]): CompiledRule[] {
   return rules.map((rule) => {
-    if (!rule.enabled || rule.regex === '') return { rule, re: null };
+    // 파국적 백트래킹(ReDoS) 패턴은 매칭하지 않는다 — 공유 URL로 전달된 정규식이
+    // 받는 사람 메인스레드를 멈추지 못하게 한다(색상 검증과 같은 방어 차원).
+    if (!rule.enabled || rule.regex === '' || !safeRegex(rule.regex)) return { rule, re: null };
     try {
       return { rule, re: new RegExp(rule.regex, 'g') };
     } catch {

@@ -1,4 +1,4 @@
-import type { Diagnostic, Format, TreeNode } from './types';
+import type { Diagnostic, Format, State, TreeNode } from './types';
 import { detectFormat } from './detect';
 import { approxFind } from './treeJump';
 import { format } from './format/index';
@@ -86,20 +86,35 @@ export function mountApp(root: AppRoot): void {
 
   const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
 
-  let currentRules = loadRules();
+  // 패널 열림 상태(트리/미리보기, 하이라이트 규칙)는 URL로 저장/복원한다.
+  let panelOpen = false;
+  let rulesOpen = false;
+
+  // URL에 규칙이 있으면 그것으로 시작(공유 링크 재현), 없으면 localStorage 기본값.
+  let currentRules = initial.r ?? loadRules();
   const rulesPanel = mountRulesPanel(root.rules, (rs) => {
     currentRules = rs;
     saveRules(rs);
     editor.setHighlightRules(rs);
+    persist(); // 규칙 편집은 localStorage + URL 둘 다 갱신
   });
   rulesPanel.render(currentRules);
   editor.setHighlightRules(currentRules);
 
+  // 빈 상태로 열면 입력 가능한 규칙 줄을 바로 보여줘 '패널이 안 열린 것처럼' 보이지 않게 함
+  function openRulesPanel(): void {
+    root.rules.hidden = false;
+    rulesOpen = true;
+    if (currentRules.length === 0) rulesPanel.render([createRule()]);
+  }
+
   highlightBtn.addEventListener('click', () => {
-    const opening = root.rules.hidden;
-    root.rules.hidden = !root.rules.hidden;
-    // 빈 상태로 열면 입력 가능한 규칙 줄을 바로 보여줘 '패널이 안 열린 것처럼' 보이지 않게 함
-    if (opening && currentRules.length === 0) rulesPanel.render([createRule()]);
+    if (root.rules.hidden) openRulesPanel();
+    else {
+      root.rules.hidden = true;
+      rulesOpen = false;
+    }
+    persist();
   });
 
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -121,9 +136,14 @@ export function mountApp(root: AppRoot): void {
     select.value = currentFormat;
   }
 
+  // 현재 전체 상태(포맷·내용·규칙·패널 열림)를 한곳에서 만든다 — persist와 save가 공유.
+  function currentState(): State {
+    return { v: 1, f: currentFormat, d: editor.getValue(), r: currentRules, p: panelOpen, h: rulesOpen };
+  }
+
   const persist = debounce(() => {
     // replaceState로 현재 히스토리 항목만 갱신 → 타이핑 중 뒤로가기 히스토리 오염 방지(스펙 §4.2)
-    history.replaceState(null, '', '#' + encode({ v: 1, f: currentFormat, d: editor.getValue() }));
+    history.replaceState(null, '', '#' + encode(currentState()));
   }, 400);
 
   const onEdit = debounce(() => {
@@ -215,11 +235,7 @@ export function mountApp(root: AppRoot): void {
     if (r) editor.revealRange(r.from, r.to);
   }
 
-  viewBtn.addEventListener('click', () => {
-    if (!root.panel.hidden) {
-      root.panel.hidden = true; // 이미 열려 있으면 닫기(토글, 스펙 §4.4)
-      return;
-    }
+  function openPanel(): void {
     root.panel.innerHTML = '';
     if (currentFormat === 'markdown') {
       const { html } = renderMarkdown(editor.getValue());
@@ -233,6 +249,17 @@ export function mountApp(root: AppRoot): void {
       applyDiagnostics(diagnostics);
     }
     root.panel.hidden = false;
+    panelOpen = true;
+  }
+
+  viewBtn.addEventListener('click', () => {
+    if (!root.panel.hidden) {
+      root.panel.hidden = true; // 이미 열려 있으면 닫기(토글, 스펙 §4.4)
+      panelOpen = false;
+    } else {
+      openPanel();
+    }
+    persist();
   });
 
   // 저장 안내 팝업(<dialog>)
@@ -270,7 +297,7 @@ export function mountApp(root: AppRoot): void {
 
   async function save(): Promise<void> {
     // 디바운스 대기 중일 수 있으므로 해시를 동기적으로 먼저 최신화한 뒤 복사(스펙 §4.5)
-    history.replaceState(null, '', '#' + encode({ v: 1, f: currentFormat, d: editor.getValue() }));
+    history.replaceState(null, '', '#' + encode(currentState()));
     const url = location.href;
     let copied = true;
     try {
@@ -291,6 +318,9 @@ export function mountApp(root: AppRoot): void {
 
   refreshToolbarForFormat();
   if (initial.d) applyDiagnostics(format(initial.d, currentFormat).diagnostics);
+  // URL에 저장된 패널 열림 상태 복원(공유 링크가 같은 화면을 재현)
+  if (initial.h) openRulesPanel();
+  if (initial.p) openPanel();
 }
 
 function button(label: string): HTMLButtonElement {
