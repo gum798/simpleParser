@@ -63,6 +63,13 @@ test('로그 추출 JSON도 절대 오프셋 pos', () => {
   expect(text.slice(r.root!.pos!.from, r.root!.pos!.to)).toBe('{"x":1}');
 });
 
+test('YAML 트리 노드는 정확한 소스 pos를 가진다', () => {
+  const text = 'a: 1\nb: two';
+  const r = buildTree(text, 'yaml');
+  const b = r.root?.children?.find((c) => c.key === 'b')!;
+  expect(text.slice(b.pos!.from, b.pos!.to)).toBe('two');
+});
+
 test('renderTree는 접이식 DOM을 만든다', () => {
   const r = buildTree('{"a":1}', 'json');
   const el = renderTree(r.root!);

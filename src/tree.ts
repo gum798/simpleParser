@@ -1,4 +1,5 @@
 import { parseTree, type Node as JsoncNode } from 'jsonc-parser';
+import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
 import { extractJsonSpans, topLevelSpans, parseJsonTolerant } from './format/json';
 import { parseYamlTolerant } from './format/yaml';
@@ -9,7 +10,7 @@ export function buildTree(text: string, fmt: Format): TreeResult {
     case 'json':
       return jsonTree(text);
     case 'yaml':
-      return fromValue(parseYamlTolerant(text));
+      return yamlTree(text);
     case 'xml':
       return domTree(text, 'application/xml');
     case 'html':
@@ -80,6 +81,38 @@ function jsoncToTree(node: JsoncNode, key: string | undefined, base: number): Tr
     };
   }
   return { key, type: 'scalar', value: node.type === 'null' ? 'null' : String(node.value), pos };
+}
+
+function yamlTree(text: string): TreeResult {
+  const { diagnostics } = parseYamlTolerant(text);
+  const doc = parseDocument(text, { prettyErrors: true });
+  if (doc.contents == null) return { diagnostics };
+  const root = yamlNodeToTree(doc.contents, undefined);
+  if (diagnostics.length > 0) root.partial = true;
+  return { root, diagnostics };
+}
+
+function yamlNodeToTree(node: unknown, key: string | undefined): TreeNode {
+  const range = (node as { range?: [number, number, number] | null }).range ?? undefined;
+  const pos = range ? { from: range[0], to: range[1] } : undefined;
+  if (isMap(node)) {
+    return {
+      key,
+      type: 'object',
+      pos,
+      children: node.items.map((pair) => {
+        const k = isScalar(pair.key) ? String(pair.key.value) : String(pair.key);
+        return yamlNodeToTree(pair.value, k);
+      }),
+    };
+  }
+  if (isSeq(node)) {
+    return { key, type: 'array', pos, children: node.items.map((it, i) => yamlNodeToTree(it, String(i))) };
+  }
+  if (isScalar(node)) {
+    return { key, type: 'scalar', value: node.value === null ? 'null' : String(node.value), pos };
+  }
+  return { key, type: 'scalar', value: node == null ? 'null' : String(node), pos };
 }
 
 function fromValue(parsed: { value: unknown; diagnostics: Diagnostic[] }): TreeResult {
