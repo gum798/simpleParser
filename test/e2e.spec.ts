@@ -100,6 +100,22 @@ test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 �
   await expect(page.locator('#rules .rule-regex').first()).toHaveValue('hello');
 });
 
+test('압축 JSON을 붙여넣으면 자동으로 정렬된다(버튼 없이)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  // CodeMirror에 실제 paste 이벤트를 전달(타이핑이 아니라 붙여넣기 경로를 타게 함)
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '{"a":1,"b":[2,3]}');
+    const el = document.querySelector('.cm-content')!;
+    el.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+  });
+  // [정렬] 버튼을 누르지 않아도 자동 정렬되어 들여쓰기가 생긴다
+  await expect(page.locator('.cm-content')).toContainText('"a": 1');
+});
+
 test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

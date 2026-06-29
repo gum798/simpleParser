@@ -12,9 +12,16 @@ import { loadRules, saveRules } from './highlight/store';
 
 const FORMATS: Format[] = ['json', 'html', 'xml', 'yaml', 'markdown'];
 const URL_WARN_LEN = 10_000;
+// 붙여넣기 시 자동 정렬은 이 길이 이하의 입력만 대상으로 한다(메인 스레드 부하 억제, 스펙 §자동파싱).
+export const AUTO_FORMAT_MAX = 256_000;
 
 export function canFormat(fmt: Format): boolean {
   return fmt !== 'markdown';
+}
+
+/** 붙여넣기 자동 정렬을 수행할지 결정한다: 정렬 가능 포맷 + 비어있지 않은 작은 입력만(저부하). */
+export function shouldAutoFormat(text: string, fmt: Format): boolean {
+  return text.trim() !== '' && text.length <= AUTO_FORMAT_MAX && canFormat(fmt);
 }
 
 export function viewLabel(fmt: Format): string {
@@ -135,7 +142,7 @@ export function mountApp(root: AppRoot): void {
     persist();
   });
 
-  formatBtn.addEventListener('click', () => {
+  function runFormat(): void {
     const before = format(editor.getValue(), currentFormat);
     if (before.output !== undefined) {
       // 안전 정책: 정렬 결과가 새 에러를 만들면 보류
@@ -151,7 +158,36 @@ export function mountApp(root: AppRoot): void {
       applyDiagnostics(before.diagnostics);
     }
     persist();
-  });
+  }
+  formatBtn.addEventListener('click', runFormat);
+
+  // 유휴 시간에 자동 정렬을 돌려 붙여넣기/렌더를 막지 않는다(requestIdleCallback 미지원 시 setTimeout 폴백).
+  const idle: (cb: () => void) => void =
+    typeof window.requestIdleCallback === 'function'
+      ? (cb) => void window.requestIdleCallback(cb)
+      : (cb) => void setTimeout(cb, 0);
+
+  function autoParse(): void {
+    const text = editor.getValue();
+    if (text.trim() === '') return;
+    // 감지: 수동 선택 중이 아니면 포맷을 자동 감지(가볍고 비파괴적)
+    if (!manual) {
+      const guess = detectFormat(text);
+      if (guess !== currentFormat) {
+        currentFormat = guess;
+        editor.setLanguage(guess);
+        refreshToolbarForFormat();
+      }
+    }
+    // 자동 정렬은 작은 입력만(저부하). 큰 입력은 정렬 보류 + 안내만(정렬 가능한 포맷일 때만 안내).
+    if (shouldAutoFormat(text, currentFormat)) runFormat();
+    else if (text.length > AUTO_FORMAT_MAX && canFormat(currentFormat)) {
+      showToast('큰 입력 — [정렬]을 눌러 직접 정렬하세요');
+    }
+  }
+
+  // 붙여넣기에만 자동 정렬을 건다(타이핑 중엔 안 함 → '너무 자주' 방지). paste는 contentDOM에서 버블링됨.
+  root.editorHost.addEventListener('paste', () => idle(autoParse));
 
   function jumpTo(node: TreeNode): void {
     const r = node.pos ?? approxFind(editor.getValue(), node);
