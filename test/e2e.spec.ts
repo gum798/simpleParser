@@ -92,3 +92,18 @@ test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 �
   await page.getByRole('button', { name: '하이라이트' }).click();
   await expect(page.locator('#rules .rule-regex').first()).toHaveValue('hello');
 });
+
+test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"alpha":111,"beta":222}');
+  await page.getByRole('button', { name: '정렬' }).click();
+  await page.getByRole('button', { name: '트리' }).click();
+
+  // 좌우 분할: 트리 패널이 보임
+  await expect(page.locator('#panel .tree-node').first()).toBeVisible();
+
+  // 'beta' 노드 라벨 클릭 → 에디터에 선택 영역 생성
+  await page.locator('#panel .tree-label', { hasText: 'beta' }).first().click();
+  await expect(page.locator('.cm-editor .cm-selectionBackground').first()).toBeVisible();
+});
