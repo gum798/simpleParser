@@ -1,5 +1,6 @@
+import { parseTree, type Node as JsoncNode } from 'jsonc-parser';
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
-import { resolveJson } from './format/json';
+import { extractJsonSpans, topLevelSpans, parseJsonTolerant } from './format/json';
 import { parseYamlTolerant } from './format/yaml';
 import { xmlDiagnostics } from './format/xml';
 
@@ -19,16 +20,66 @@ export function buildTree(text: string, fmt: Format): TreeResult {
 }
 
 function jsonTree(text: string): TreeResult {
-  const r = resolveJson(text);
-  if (r.kind === 'value') {
-    return { root: valueToNode(r.value), diagnostics: [] };
+  const spans = topLevelSpans(text);
+  const isWholeSingleSpan =
+    spans.length === 1 &&
+    text.slice(0, spans[0][0]).trim() === '' &&
+    text.slice(spans[0][1] + 1).trim() === '';
+  let validWhole = false;
+  try {
+    JSON.parse(text);
+    validWhole = true;
+  } catch {
+    /* not strictly valid */
   }
-  if (r.kind === 'blocks') {
-    const root = r.values.length === 1 ? valueToNode(r.values[0]) : valueToNode(r.values);
-    return { root, diagnostics: [] };
+
+  if (validWhole || isWholeSingleSpan) {
+    const node = parseTree(text, undefined, { allowTrailingComma: true });
+    if (!node) return fromValue(parseJsonTolerant(text));
+    const root = jsoncToTree(node, undefined, 0);
+    const { diagnostics } = parseJsonTolerant(text);
+    if (diagnostics.length > 0) root.partial = true;
+    return { root, diagnostics };
   }
-  // 깨진 단일 문서는 관용 복구(partial 표시 + 진단)
-  return fromValue({ value: r.value, diagnostics: r.diagnostics });
+
+  // 로그/텍스트 추출 모드: 블록별 parseTree + 절대 오프셋
+  const blocks = extractJsonSpans(text);
+  const nodes = blocks
+    .map((b) => {
+      const n = parseTree(b.text, undefined, { allowTrailingComma: true });
+      return n ? jsoncToTree(n, undefined, b.start) : null;
+    })
+    .filter((n): n is TreeNode => n !== null);
+  if (nodes.length === 0) return fromValue(parseJsonTolerant(text));
+  const root = nodes.length === 1 ? nodes[0] : { type: 'array' as const, children: nodes };
+  return { root, diagnostics: [] };
+}
+
+function jsoncToTree(node: JsoncNode, key: string | undefined, base: number): TreeNode {
+  const pos = { from: base + node.offset, to: base + node.offset + node.length };
+  if (node.type === 'object') {
+    const children = (node.children ?? []).map((prop) => {
+      const k = String(prop.children?.[0]?.value ?? '');
+      const valNode = prop.children?.[1];
+      if (valNode) return jsoncToTree(valNode, k, base);
+      return {
+        key: k,
+        type: 'scalar' as const,
+        value: '',
+        pos: { from: base + prop.offset, to: base + prop.offset + prop.length },
+      };
+    });
+    return { key, type: 'object', pos, children };
+  }
+  if (node.type === 'array') {
+    return {
+      key,
+      type: 'array',
+      pos,
+      children: (node.children ?? []).map((c, i) => jsoncToTree(c, String(i), base)),
+    };
+  }
+  return { key, type: 'scalar', value: node.type === 'null' ? 'null' : String(node.value), pos };
 }
 
 function fromValue(parsed: { value: unknown; diagnostics: Diagnostic[] }): TreeResult {

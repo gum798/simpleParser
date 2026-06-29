@@ -20,6 +20,7 @@ export interface TreeNode {
   type: 'object' | 'array' | 'element' | 'scalar';
   children?: TreeNode[];
   partial?: boolean;
+  pos?: { from: number; to: number };
 }
 
 export interface TreeResult {

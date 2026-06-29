@@ -70,27 +70,31 @@ export function formatJson(text: string): FormatResult {
  * 문자열·이스케이프를 인식하고, 균형은 맞지만 JSON이 아닌 구간은 내부를 다시 훑어
  * 중첩된 유효 JSON을 찾는다. (예: 로그의 `body={"a":1}` → `{"a":1}`)
  */
-export function extractJsonBlocks(text: string, depth = 0): string[] {
-  if (depth > 40) return []; // 병적 입력 방어(재귀 깊이 상한)
-  const out: string[] = [];
-  for (const [start, end] of topLevelSpans(text)) {
-    const span = text.slice(start, end + 1);
+/** 블록 텍스트와 그 절대 시작 오프셋을 함께 추출한다(중첩 복구 시 base로 절대 위치 유지). */
+export function extractJsonSpans(text: string, base = 0, depth = 0): Array<{ text: string; start: number }> {
+  if (depth > 40) return [];
+  const out: Array<{ text: string; start: number }> = [];
+  for (const [s, e] of topLevelSpans(text)) {
+    const span = text.slice(s, e + 1);
     try {
       JSON.parse(span);
-      out.push(span);
+      out.push({ text: span, start: base + s });
     } catch {
-      // 균형은 맞지만 유효 JSON 아님 → 내부에서 중첩 JSON 탐색
-      out.push(...extractJsonBlocks(text.slice(start + 1, end), depth + 1));
+      out.push(...extractJsonSpans(text.slice(s + 1, e), base + s + 1, depth + 1));
     }
   }
   return out;
+}
+
+export function extractJsonBlocks(text: string): string[] {
+  return extractJsonSpans(text).map((b) => b.text);
 }
 
 /**
  * 문자열을 한 번만(O(n)) 훑어 최상위(깊이 0→0) 균형 괄호 구간 [start,end]들을 반환.
  * 문자열 리터럴 내부의 괄호는 무시하고, 괄호 종류가 어긋나면 해당 구간을 폐기한다.
  */
-function topLevelSpans(text: string): Array<[number, number]> {
+export function topLevelSpans(text: string): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   const stack: string[] = []; // 기대하는 닫는 괄호들
   let topStart = -1;

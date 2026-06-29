@@ -47,6 +47,22 @@ test('로그의 박힌 JSON들을 트리로(여러 개는 배열로 묶음)', ()
   expect(r.root?.children).toHaveLength(2);
 });
 
+test('JSON 트리 노드는 정확한 소스 pos를 가진다', () => {
+  const text = '{"a":1,"b":[2,3]}';
+  const r = buildTree(text, 'json');
+  const a = r.root?.children?.find((c) => c.key === 'a')!;
+  expect(text.slice(a.pos!.from, a.pos!.to)).toBe('1'); // a의 값 위치
+  const b = r.root?.children?.find((c) => c.key === 'b')!;
+  expect(text.slice(b.pos!.from, b.pos!.to)).toBe('[2,3]'); // b의 배열 위치
+});
+
+test('로그 추출 JSON도 절대 오프셋 pos', () => {
+  const text = 'log body={"x":1} end';
+  const r = buildTree(text, 'json');
+  // 단일 블록이면 그 객체가 root
+  expect(text.slice(r.root!.pos!.from, r.root!.pos!.to)).toBe('{"x":1}');
+});
+
 test('renderTree는 접이식 DOM을 만든다', () => {
   const r = buildTree('{"a":1}', 'json');
   const el = renderTree(r.root!);
