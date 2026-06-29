@@ -183,6 +183,10 @@ test('하이라이트 규칙이 URL로 공유된다(빈 localStorage 새 세션�
   const fresh = await ctx.newPage();
   await fresh.goto(shared);
   // h=true도 URL에 저장돼 규칙 패널이 자동으로 열려 있음 → 입력칸에 정규식이 복원
+  await expect(fresh.locator('#rules')).toBeVisible();
   await expect(fresh.locator('#rules .rule-regex').first()).toHaveValue('hello');
+  // 링크만 연 경우 받는 사람 localStorage는 건드리지 않는다 → 규칙은 URL에서만 왔음을 증명
+  const stored = await fresh.evaluate(() => localStorage.getItem('simpleparser.highlightRules'));
+  expect(stored).toBeNull();
   await ctx.close();
 });

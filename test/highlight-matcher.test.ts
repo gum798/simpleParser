@@ -33,3 +33,17 @@ test('findHighlights: zero-length 정규식도 무한루프 없이 종료', () =
   const spans = findHighlights('aa', compileRules([rule({ regex: 'a*' })]));
   expect(spans).toEqual([{ from: 0, to: 2, rule: expect.objectContaining({ regex: 'a*' }) }]);
 });
+
+test('compileRules: 파국적 백트래킹 정규식은 컴파일 거부(ReDoS 방어)', () => {
+  // 공유 URL로 전달될 수 있는 악성 패턴 → 매칭하지 않음(re:null), 탭 멈춤 방지
+  const compiled = compileRules([rule({ regex: '(a+)+$' })]);
+  expect(compiled[0]!.re).toBeNull();
+  // 같은 입력에서도 매칭이 발생하지 않아 메인스레드가 멈추지 않는다
+  const spans = findHighlights('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!', compiled);
+  expect(spans).toHaveLength(0);
+});
+
+test('compileRules: 일반 정규식은 정상 컴파일', () => {
+  const compiled = compileRules([rule({ regex: 'error|warn' })]);
+  expect(compiled[0]!.re).not.toBeNull();
+});
