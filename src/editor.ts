@@ -6,7 +6,9 @@ import { html } from '@codemirror/lang-html';
 import { xml } from '@codemirror/lang-xml';
 import { yaml } from '@codemirror/lang-yaml';
 import { markdown } from '@codemirror/lang-markdown';
+import { highlightExtension, setHighlightRules as applyHighlightRules } from './highlight/extension';
 import type { Diagnostic, Format } from './types';
+import type { HighlightRule } from './highlight/matcher';
 
 const langFor: Record<Format, () => ReturnType<typeof json>> = {
   json,
@@ -32,6 +34,7 @@ export interface Editor {
   setValue(s: string): void;
   setLanguage(fmt: Format): void;
   setDiagnostics(d: Diagnostic[]): void;
+  setHighlightRules(rules: HighlightRule[]): void;
 }
 
 export function createEditor(
@@ -50,6 +53,7 @@ export function createEditor(
         basicSetup,
         language.of(langFor[initial.fmt]()),
         lintGutter(),
+        highlightExtension,
         linter((v) => toCmDiagnostics(v.state.doc.toString(), diagnostics)),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChange();
@@ -67,5 +71,6 @@ export function createEditor(
       diagnostics = d;
       forceLinting(view);
     },
+    setHighlightRules: (rules) => applyHighlightRules(view, rules),
   };
 }
