@@ -6,6 +6,8 @@ import { renderMarkdown } from './preview';
 import { encode, decode } from './urlState';
 import { createEditor } from './editor';
 import { debounce } from './util/debounce';
+import { mountRulesPanel } from './rulesPanel';
+import { loadRules, saveRules } from './highlight/store';
 
 const FORMATS: Format[] = ['json', 'html', 'xml', 'yaml', 'markdown'];
 const URL_WARN_LEN = 10_000;
@@ -38,6 +40,7 @@ export interface AppRoot {
   panel: HTMLElement;
   status: HTMLElement;
   toast: HTMLElement;
+  rules: HTMLElement;
 }
 
 export function mountApp(root: AppRoot): void {
@@ -60,9 +63,24 @@ export function mountApp(root: AppRoot): void {
   const formatBtn = button('정렬');
   const viewBtn = button(viewLabel(currentFormat));
   const saveBtn = button('저장하기');
-  root.toolbar.append(select, formatBtn, viewBtn, saveBtn);
+  const highlightBtn = button('하이라이트');
+  root.toolbar.append(select, formatBtn, viewBtn, highlightBtn, saveBtn);
 
   const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
+
+  const rulesPanel = mountRulesPanel(root.rules, (rs) => {
+    saveRules(rs);
+    editor.setHighlightRules(rs);
+  });
+  {
+    const loaded = loadRules();
+    rulesPanel.render(loaded);
+    editor.setHighlightRules(loaded);
+  }
+
+  highlightBtn.addEventListener('click', () => {
+    root.rules.hidden = !root.rules.hidden;
+  });
 
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   function showToast(msg: string): void {
