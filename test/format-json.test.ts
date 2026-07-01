@@ -19,6 +19,12 @@ test('충실도(faithful): 로그 추출(blocks)·관용 복구(tolerant)는 fal
   expect(formatJson('{"a":1 // 메모\n}').faithful).toBe(false); // tolerant(주석)
 });
 
+test('충실도(faithful): 중복 키는 false — 자동 정렬이 조용히 병합하지 않도록', () => {
+  expect(formatJson('{"a":1,"a":2}').faithful).toBe(false);
+  expect(formatJson('{"x":{"k":1,"k":2}}').faithful).toBe(false); // 중첩 객체도 감지
+  expect(formatJson('{"a":1,"b":{"a":9}}').faithful).toBe(true); // 다른 스코프의 같은 이름은 중복 아님
+});
+
 test('콤마 빠진 JSON은 진단 + 줄:열 보고', () => {
   const r = formatJson('{\n  "a": 1\n  "b": 2\n}');
   expect(r.diagnostics.length).toBeGreaterThan(0);

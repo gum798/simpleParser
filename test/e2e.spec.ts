@@ -130,6 +130,20 @@ test('정규화가 필요한 JSON(소수)도 붙여넣으면 자동 정렬된다
   await expect(page.locator('.cm-content')).toContainText('"n": 1');
 });
 
+test('중복 키 JSON은 붙여넣어도 자동 정렬로 병합되지 않는다(데이터 손실 방지)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '{"a":1,"a":2}');
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  // 자동 정렬 보류 → 원문 유지(중복 키 그대로), 마지막 값으로 병합되지 않음
+  await expect(page.locator('.cm-content')).toContainText('{"a":1,"a":2}');
+});
+
 test('우클릭 → 색상 선택 → 선택 텍스트가 하이라이트 규칙으로 추가', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

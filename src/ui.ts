@@ -16,6 +16,8 @@ const FORMATS: Format[] = ['json', 'html', 'xml', 'yaml', 'markdown'];
 const URL_WARN_LEN = 10_000;
 // 붙여넣기 시 자동 정렬은 이 길이 이하의 입력만 대상으로 한다(메인 스레드 부하 억제, 스펙 §자동파싱).
 export const AUTO_FORMAT_MAX = 256_000;
+// 우클릭 강조로 만들 규칙의 선택 텍스트 상한 — 지나치게 길면 URL/매칭 비용만 커진다.
+const MAX_HIGHLIGHT_SELECTION = 1_000;
 
 export function canFormat(fmt: Format): boolean {
   return fmt !== 'markdown';
@@ -228,6 +230,10 @@ export function mountApp(root: AppRoot): void {
     host: root.editorHost,
     getSelectionText: () => editor.getSelectionText(),
     onPick: (text, color) => {
+      if (text.length > MAX_HIGHLIGHT_SELECTION) {
+        showToast('선택이 너무 깁니다 — 더 짧게 선택하세요');
+        return;
+      }
       const regex = regexEscape(text);
       const idx = currentRules.findIndex((r) => r.regex === regex);
       const next =

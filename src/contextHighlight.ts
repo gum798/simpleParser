@@ -79,8 +79,8 @@ export function mountContextHighlight(deps: ContextHighlightDeps): void {
       sw.title = c.name;
       sw.style.backgroundColor = c.bg;
       sw.addEventListener('click', () => {
+        close(); // 먼저 메뉴/리스너 정리 → onPick이 실패해도 잔존물 없음
         deps.onPick(sel, c);
-        close();
       });
       row.appendChild(sw);
     }
