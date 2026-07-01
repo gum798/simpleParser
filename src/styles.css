@@ -1,21 +1,37 @@
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  font-family: 'Pretendard', 'Pretendard Variable', 'Apple SD Gothic Neo', 'Noto Sans KR',
+    'Malgun Gothic', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   /* 글래스(간유리) 테마 변수 — 테마설정 슬라이더가 --glass-alpha/--glass-blur를 실시간 변경 */
-  --glass-alpha: 0.65; /* 콘텐츠 패널(트리·하이라이트) 투명도: 낮을수록 뒤 글자가 더 보임 */
-  --glass-blur: 8px;
-  --chrome-alpha: 0.9; /* 메뉴/다이얼로그 등 크롬은 가독성 위해 더 불투명 */
+  --glass-alpha: 0.5; /* 콘텐츠 패널(트리·하이라이트) 투명도: 낮을수록 뒤 배경/글자가 더 보임 */
+  --glass-blur: 12px;
+  --chrome-alpha: 0.72; /* 메뉴/다이얼로그 등 크롬은 가독성 위해 조금 더 불투명 */
   --glass-rgb: 255, 255, 255; /* 라이트 간유리 바탕 */
   --edge-rgb: 0, 0, 0; /* 테두리/호버 */
+  /* 유리 뒤로 비치는 은은한 배경(그라데이션) */
+  --app-bg: linear-gradient(135deg, #e9efff 0%, #f3f0ff 45%, #ffeef6 100%);
 }
 @media (prefers-color-scheme: dark) {
-  :root { --glass-rgb: 28, 30, 36; --edge-rgb: 255, 255, 255; }
+  :root {
+    --glass-rgb: 30, 32, 40;
+    --edge-rgb: 255, 255, 255;
+    --app-bg: linear-gradient(135deg, #12141d 0%, #191524 50%, #201826 100%);
+  }
 }
 
-body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
+body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: var(--app-bg); }
 #content { flex: 1; display: flex; min-height: 0; }
-#editor { flex: 1; overflow: auto; min-width: 0; }
-#status { padding: 4px 8px; font-size: 12px; border-top: 1px solid rgba(var(--edge-rgb), 0.15); }
+/* 에디터를 투명하게 → 뒤 배경 그라데이션이 은은히 비침(유리감). 텍스트는 그대로 읽힘 */
+#editor { flex: 1; overflow: auto; min-width: 0; background: transparent; }
+#editor .cm-editor, #editor .cm-gutters { background: transparent; }
+/* 하이라이트 오버레이가 열리면 에디터에 하단 여백을 줘 모든 줄을 오버레이 위로 스크롤 가능 */
+body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
+#status { padding: 4px 8px; font-size: 12px;
+  border-top: 1px solid rgba(var(--edge-rgb), 0.15);
+  background: rgba(var(--glass-rgb), var(--chrome-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
 
 /* ── 메뉴바 (편집/보기) ── */
 #toolbar { position: relative; z-index: 60; display: flex; gap: 8px; padding: 8px; align-items: center;

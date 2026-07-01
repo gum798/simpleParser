@@ -112,6 +112,26 @@ test('하이라이트 패널은 기본 숨김이고 토글로 열고 닫힌다',
   await expect(page.locator('#rules')).toBeHidden();
 });
 
+test('하이라이트 패널이 열리면 에디터에 하단 여백이 생겨 모든 줄을 스크롤로 볼 수 있다', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.evaluate(() => {
+    const big = JSON.stringify({ a: Array.from({ length: 30 }, (_, i) => i) });
+    const dt = new DataTransfer();
+    dt.setData('text/plain', big);
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500);
+  await menuAction(page, '보기', '하이라이트');
+  // 오버레이가 가리는 만큼 .cm-content 하단 여백이 생겨야 함(가려진 줄을 위로 스크롤 가능)
+  const pad = await page
+    .locator('.cm-content')
+    .evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  expect(pad).toBeGreaterThan(100);
+});
+
 test('하이라이트 패널을 열면 바로 입력 가능한 규칙 줄이 보인다', async ({ page }) => {
   await page.goto('/');
   await menuAction(page, '보기', '하이라이트');
