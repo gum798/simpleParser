@@ -5,7 +5,7 @@ export interface Theme {
 }
 
 const KEY = 'simpleparser.theme';
-export const DEFAULT_THEME: Theme = { alpha: 0.5, blur: 12 };
+export const DEFAULT_THEME: Theme = { alpha: 0.2, blur: 3 };
 export const ALPHA_MIN = 0.2;
 export const ALPHA_MAX = 1;
 export const BLUR_MIN = 0;

@@ -5,11 +5,12 @@
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* 글래스(간유리) 테마 변수 — 테마설정 슬라이더가 --glass-alpha/--glass-blur를 실시간 변경 */
-  --glass-alpha: 0.5; /* 콘텐츠 패널(트리·하이라이트) 투명도: 낮을수록 뒤 배경/글자가 더 보임 */
-  --glass-blur: 12px;
+  --glass-alpha: 0.2; /* 콘텐츠 패널(트리·하이라이트) 투명도: 낮을수록 뒤 배경/글자가 더 보임 */
+  --glass-blur: 3px;
   --chrome-alpha: 0.72; /* 메뉴/다이얼로그 등 크롬은 가독성 위해 조금 더 불투명 */
   --glass-rgb: 255, 255, 255; /* 라이트 간유리 바탕 */
   --edge-rgb: 0, 0, 0; /* 테두리/호버 */
+  --glass-rim: rgba(255, 255, 255, 0.6); /* 유리 가장자리 하이라이트(두께·굴곡감) */
   /* 유리 뒤로 비치는 은은한 배경(그라데이션) */
   --app-bg: linear-gradient(135deg, #e9efff 0%, #f3f0ff 45%, #ffeef6 100%);
 }
@@ -17,6 +18,7 @@
   :root {
     --glass-rgb: 30, 32, 40;
     --edge-rgb: 255, 255, 255;
+    --glass-rim: rgba(255, 255, 255, 0.16);
     --app-bg: linear-gradient(135deg, #12141d 0%, #191524 50%, #201826 100%);
   }
 }
@@ -38,18 +40,18 @@ body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px)
   background: rgba(var(--glass-rgb), var(--chrome-alpha));
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
   border-bottom: 1px solid rgba(var(--edge-rgb), 0.12); }
-#format-select { font: inherit; padding: 3px 6px; border-radius: 8px;
-  border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
-.menu-btn { font: inherit; padding: 4px 12px; border-radius: 8px; cursor: pointer;
-  border: 1px solid rgba(var(--edge-rgb), 0.15); background: rgba(var(--glass-rgb), 0.4); }
+#format-select { font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 8px;
+  border: 1px solid rgba(var(--edge-rgb), 0.18); background: rgba(var(--glass-rgb), 0.5); }
+.menu-btn { font: inherit; font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 8px;
+  cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.12); background: rgba(var(--glass-rgb), 0.35); }
 .menu-btn:hover { background: rgba(var(--edge-rgb), 0.08); }
-.menu-dropdown { position: fixed; z-index: 100; min-width: 150px; padding: 6px; border-radius: 12px;
-  display: flex; flex-direction: column; gap: 2px;
+.menu-dropdown { position: fixed; z-index: 100; min-width: 148px; padding: 5px; border-radius: 12px;
+  display: flex; flex-direction: column; gap: 1px;
   background: rgba(var(--glass-rgb), var(--chrome-alpha));
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid rgba(var(--edge-rgb), 0.15); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22); }
-.menu-item { font: inherit; text-align: left; padding: 7px 12px; border-radius: 8px; cursor: pointer;
-  border: none; background: none; color: inherit; }
+.menu-item { font: inherit; font-size: 13px; text-align: left; padding: 6px 10px; border-radius: 7px;
+  cursor: pointer; border: none; background: none; color: inherit; }
 .menu-item:hover:not(:disabled) { background: rgba(var(--edge-rgb), 0.09); }
 .menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -83,6 +85,9 @@ body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px)
 .save-site { margin: 0 0 10px; display: flex; align-items: center; gap: 6px; }
 .save-site-note { font-size: 12px; opacity: 0.7; }
 #save-dialog form { margin: 0; text-align: right; }
+#save-dialog button, .save-site button { font: inherit; font-size: 13px; padding: 5px 12px;
+  border-radius: 8px; cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.2);
+  background: rgba(var(--glass-rgb), 0.5); }
 
 /* ── 테마설정 팝오버(비모달 → 뒤 패널 변화가 실시간으로 보임) ── */
 .theme-panel { position: fixed; top: 52px; right: 12px; z-index: 90; width: 240px; padding: 12px 14px;
@@ -90,12 +95,12 @@ body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px)
   background: rgba(var(--glass-rgb), var(--chrome-alpha));
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid rgba(var(--edge-rgb), 0.15); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22); }
-.theme-title { font-weight: 600; }
+.theme-title { font-weight: 600; font-size: 14px; }
 .theme-row { display: grid; grid-template-columns: 40px 1fr 44px; align-items: center; gap: 8px; font-size: 13px; }
 .theme-slider { width: 100%; }
 .theme-val { text-align: right; opacity: 0.7; font-variant-numeric: tabular-nums; }
-.theme-close { align-self: flex-end; font: inherit; padding: 4px 12px; border-radius: 8px; cursor: pointer;
-  border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
+.theme-close { align-self: flex-end; font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 8px;
+  cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
 
 /* ── 하이라이트 규칙 패널 = 에디터 위 떠 있는 간유리 오버레이(뒤 글자 비쳐 보임) ── */
 #rules { position: fixed; left: 12px; right: 12px; bottom: 40px; z-index: 50; max-height: 45vh; overflow: auto;
@@ -123,8 +128,9 @@ body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px)
 .rule-row input.rule-regex.invalid { outline: 1px solid #c0392b; background: #c0392b22; }
 .rule-row input[type="color"] { width: 28px; height: 24px; padding: 0; }
 .rule-del { background: none; border: none; cursor: pointer; justify-self: end; color: inherit; }
-.rule-add { grid-column: 1 / -1; justify-self: start; font: inherit; padding: 4px 12px; border-radius: 8px;
-  cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
+.rule-add { grid-column: 1 / -1; justify-self: start; font: inherit; font-size: 13px; padding: 4px 12px;
+  border-radius: 8px; cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.2);
+  background: rgba(var(--glass-rgb), 0.5); }
 
 /* ── 우클릭 색상 팔레트(간유리) ── */
 .ctx-highlight { position: fixed; z-index: 1000; padding: 8px; border-radius: 12px;
@@ -137,3 +143,17 @@ body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px)
 .ctx-swatch { width: 24px; height: 24px; border: 1px solid rgba(var(--edge-rgb), 0.2); border-radius: 6px;
   cursor: pointer; padding: 0; }
 .ctx-swatch:hover { outline: 2px solid #4a90d9; }
+
+/* ── iOS 스타일 유리감: 채도 강조 backdrop + 가장자리 하이라이트(굴곡) + 둥근 모서리 ── */
+#toolbar, #status, #panel, #rules, .menu-dropdown, #save-dialog, .theme-panel, .ctx-highlight {
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+}
+/* 떠 있는 유리 패널: 밝은 테두리 + 상단 광택(specular) + 부드러운 그림자 → 유리 두께/굴곡감 */
+#rules, .menu-dropdown, #save-dialog, .theme-panel, .ctx-highlight {
+  border: 1px solid var(--glass-rim);
+  box-shadow: inset 0 1px 0 var(--glass-rim), 0 12px 34px rgba(0, 0, 0, 0.16);
+}
+#rules { border-radius: 20px; }
+#save-dialog, .theme-panel { border-radius: 18px; }
+.menu-dropdown, .ctx-highlight { border-radius: 14px; }
