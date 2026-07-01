@@ -36,11 +36,11 @@ export function viewLabel(fmt: Format): string {
 }
 
 export function formatDiagnosticLine(diags: Diagnostic[]): string {
-  if (diags.length === 0) return '문제 없음';
+  if (diags.length === 0) return '✓ 문제 없음';
   const first = diags.find((d) => d.severity === 'error') ?? diags[0];
   const loc = first.line ? `줄 ${first.line}, 열 ${first.col ?? 1}: ` : '';
   const extra = diags.length > 1 ? ` (외 ${diags.length - 1}건)` : '';
-  return `${loc}${first.message}${extra}`;
+  return `⚠ ${loc}${first.message}${extra}`;
 }
 
 export function saveMessage(copied: boolean): string {
@@ -122,15 +122,24 @@ export function mountApp(root: AppRoot): void {
     saveRules(rs);
     editor.setHighlightRules(rs);
     persist(); // 규칙 편집은 localStorage + URL 둘 다 갱신
+    syncRulesPad(); // 규칙 추가/삭제로 오버레이 높이 바뀌면 여백 갱신
   });
   rulesPanel.render(currentRules);
   editor.setHighlightRules(currentRules);
+
+  function syncRulesPad(): void {
+    // 오버레이 실제 높이를 CSS 변수로 → 그만큼 에디터 하단 여백 확보(모든 줄을 오버레이 위로 스크롤)
+    if (root.rules.hidden) document.body.style.removeProperty('--rules-h');
+    else document.body.style.setProperty('--rules-h', `${root.rules.offsetHeight}px`);
+  }
 
   // 빈 상태로 열면 입력 가능한 규칙 줄을 바로 보여줘 '패널이 안 열린 것처럼' 보이지 않게 함
   function openRulesPanel(): void {
     root.rules.hidden = false;
     rulesOpen = true;
+    document.body.classList.add('rules-open');
     if (currentRules.length === 0) rulesPanel.render([createRule()]);
+    syncRulesPad();
   }
 
   function toggleRules(): void {
@@ -138,6 +147,7 @@ export function mountApp(root: AppRoot): void {
     else {
       root.rules.hidden = true;
       rulesOpen = false;
+      document.body.classList.remove('rules-open');
     }
     persist();
   }
@@ -278,6 +288,7 @@ export function mountApp(root: AppRoot): void {
       saveRules(next);
       editor.setHighlightRules(next);
       rulesPanel.render(next);
+      syncRulesPad();
       persist();
       showToast(`"${truncateLabel(text, 12)}" 강조 규칙 적용`);
     },
