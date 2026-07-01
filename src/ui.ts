@@ -76,7 +76,8 @@ export function mountApp(root: AppRoot): void {
   const viewBtn = button(viewLabel(currentFormat));
   const saveBtn = button('저장하기');
   const highlightBtn = button('하이라이트');
-  root.toolbar.append(select, formatBtn, viewBtn, highlightBtn, saveBtn);
+  const cleanBtn = button('클린');
+  root.toolbar.append(select, formatBtn, viewBtn, highlightBtn, saveBtn, cleanBtn);
 
   const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
 
@@ -301,13 +302,33 @@ export function mountApp(root: AppRoot): void {
   saveWarnEl.className = 'save-warn';
   saveWarnEl.hidden = true;
   saveWarnEl.textContent = '링크가 길어 일부 메신저에서 잘릴 수 있습니다.';
+  // 사이트만 공유(문서 없이): 프래그먼트 뺀 도구 링크 복사. 모달 위엔 토스트가 안 보이므로 버튼 라벨로 피드백.
+  const siteShareRow = document.createElement('p');
+  siteShareRow.className = 'save-site';
+  const siteShareBtn = button('사이트만 공유하기');
+  const siteShareNote = document.createElement('span');
+  siteShareNote.className = 'save-site-note';
+  siteShareNote.textContent = ' 문서 없이 이 도구 링크만';
+  siteShareRow.append(siteShareBtn, siteShareNote);
+  siteShareBtn.addEventListener('click', () => {
+    void (async () => {
+      const siteUrl = location.origin + location.pathname; // 해시(#문서) 제외
+      try {
+        await navigator.clipboard.writeText(siteUrl);
+        siteShareBtn.textContent = '사이트 링크 복사됨 ✓';
+      } catch {
+        siteShareBtn.textContent = '복사 실패 — 주소창의 # 앞부분';
+      }
+      setTimeout(() => (siteShareBtn.textContent = '사이트만 공유하기'), 1800);
+    })();
+  });
   const saveForm = document.createElement('form');
   saveForm.method = 'dialog';
   const saveCloseBtn = button('닫기');
   // button() 헬퍼가 type='button'을 강제하므로 form method=dialog 제출이 안 됨 → 명시적으로 닫는다
   saveCloseBtn.addEventListener('click', () => saveDialog.close());
   saveForm.appendChild(saveCloseBtn);
-  saveDialog.append(saveMsgEl, saveRestoreEl, saveUrlEl, saveWarnEl, saveForm);
+  saveDialog.append(saveMsgEl, saveRestoreEl, saveUrlEl, saveWarnEl, siteShareRow, saveForm);
   document.body.appendChild(saveDialog);
 
   function openSaveDialog(url: string, copied: boolean): void {
@@ -338,6 +359,13 @@ export function mountApp(root: AppRoot): void {
       e.preventDefault(); // 브라우저 기본 '페이지 저장' 차단
       void save();
     }
+  });
+
+  cleanBtn.addEventListener('click', () => {
+    if (editor.getValue() === '') return;
+    editor.setValue(''); // onChange가 persist까지 처리. Cmd/Ctrl+Z로 복구 가능
+    applyDiagnostics([]);
+    showToast('내용을 지웠습니다 · Cmd/Ctrl+Z로 되돌리기');
   });
 
   refreshToolbarForFormat();

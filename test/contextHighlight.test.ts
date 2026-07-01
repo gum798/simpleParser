@@ -14,3 +14,7 @@ test('PALETTE 색은 모두 #rrggbb — store isRule 통과 · style 주입 방�
     expect(HEX.test(c.text)).toBe(true);
   }
 });
+
+test('PALETTE는 12색 — 6열 × 2줄', () => {
+  expect(PALETTE).toHaveLength(12);
+});

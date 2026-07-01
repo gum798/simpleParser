@@ -31,6 +31,27 @@ test('Cmd/Ctrl+S 단축키로 저장 팝업 표시', async ({ page }) => {
   await expect(page.locator('#save-dialog .save-url')).toHaveValue(/#/);
 });
 
+test('클린 버튼이 에디터 내용을 지운다', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await expect(page.locator('.cm-content')).toContainText('"a"');
+  await page.getByRole('button', { name: '클린' }).click();
+  await expect(page.locator('.cm-content')).toHaveText('');
+});
+
+test('저장 팝업의 [사이트만 공유하기]는 문서 없는 도구 링크를 복사', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await page.getByRole('button', { name: '저장하기' }).click();
+  await page.getByRole('button', { name: '사이트만 공유하기' }).click();
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip).not.toContain('#'); // 프래그먼트(문서) 없음
+  expect(clip).toMatch(/^https?:\/\//); // 도구 URL
+});
+
 test('깨진 JSON은 상태줄에 줄:열 에러를 표시', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();
