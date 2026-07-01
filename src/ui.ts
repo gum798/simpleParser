@@ -11,6 +11,9 @@ import { mountRulesPanel, createRule } from './rulesPanel';
 import { loadRules, saveRules } from './highlight/store';
 import { mountContextHighlight, truncateLabel } from './contextHighlight';
 import { regexEscape } from './util/regexEscape';
+import { mountMenubar } from './menubar';
+import { loadTheme, saveTheme, applyTheme } from './theme';
+import { openThemePanel } from './themePanel';
 
 const FORMATS: Format[] = ['json', 'html', 'xml', 'yaml', 'markdown'];
 const URL_WARN_LEN = 10_000;
@@ -72,12 +75,37 @@ export function mountApp(root: AppRoot): void {
     if (f === currentFormat) opt.selected = true;
     select.appendChild(opt);
   }
-  const formatBtn = button('정렬');
-  const viewBtn = button(viewLabel(currentFormat));
-  const saveBtn = button('저장하기');
-  const highlightBtn = button('하이라이트');
-  const cleanBtn = button('클린');
-  root.toolbar.append(select, formatBtn, viewBtn, highlightBtn, saveBtn, cleanBtn);
+  root.toolbar.append(select);
+  // 관례적 순서(편집 → 보기)의 드롭다운 메뉴. 항목은 열릴 때마다 그려져 동적 라벨/비활성 반영.
+  mountMenubar(root.toolbar, [
+    {
+      title: '편집',
+      items: [
+        { label: '저장', run: () => void save() },
+        { label: '클린', run: doClean },
+      ],
+    },
+    {
+      title: '보기',
+      items: [
+        { label: '정렬', disabled: () => !canFormat(currentFormat), run: () => runFormat() },
+        { label: () => viewLabel(currentFormat), run: toggleView },
+        { label: '하이라이트', run: toggleRules },
+        { label: '테마설정', run: openTheme },
+      ],
+    },
+  ]);
+
+  // 글래스 테마(투명도/흐림) 로드 후 CSS 변수에 반영
+  let theme = loadTheme();
+  applyTheme(theme);
+  function openTheme(): void {
+    openThemePanel(theme, (t) => {
+      theme = t;
+      applyTheme(t);
+      saveTheme(t);
+    });
+  }
 
   const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
 
@@ -103,14 +131,14 @@ export function mountApp(root: AppRoot): void {
     if (currentRules.length === 0) rulesPanel.render([createRule()]);
   }
 
-  highlightBtn.addEventListener('click', () => {
+  function toggleRules(): void {
     if (root.rules.hidden) openRulesPanel();
     else {
       root.rules.hidden = true;
       rulesOpen = false;
     }
     persist();
-  });
+  }
 
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   function showToast(msg: string): void {
@@ -126,8 +154,7 @@ export function mountApp(root: AppRoot): void {
   }
 
   function refreshToolbarForFormat(): void {
-    formatBtn.disabled = !canFormat(currentFormat);
-    viewBtn.textContent = viewLabel(currentFormat);
+    // 정렬 비활성/뷰 라벨은 메뉴가 열릴 때 동적으로 계산 → 여기선 포맷 선택만 동기화
     select.value = currentFormat;
   }
 
@@ -191,7 +218,6 @@ export function mountApp(root: AppRoot): void {
     }
     persist();
   }
-  formatBtn.addEventListener('click', () => runFormat());
 
   // 유휴 시간에 자동 정렬을 돌려 붙여넣기/렌더를 막지 않는다. timeout으로 바쁜 메인스레드에서도 결국 실행.
   // requestIdleCallback 미지원(구형 Safari 등) 시 setTimeout 폴백.
@@ -277,7 +303,7 @@ export function mountApp(root: AppRoot): void {
     panelOpen = true;
   }
 
-  viewBtn.addEventListener('click', () => {
+  function toggleView(): void {
     if (!root.panel.hidden) {
       root.panel.hidden = true; // 이미 열려 있으면 닫기(토글, 스펙 §4.4)
       panelOpen = false;
@@ -285,7 +311,7 @@ export function mountApp(root: AppRoot): void {
       openPanel();
     }
     persist();
-  });
+  }
 
   // 저장 안내 팝업(<dialog>)
   const saveDialog = document.createElement('dialog');
@@ -353,7 +379,6 @@ export function mountApp(root: AppRoot): void {
     openSaveDialog(url, copied);
   }
 
-  saveBtn.addEventListener('click', () => void save());
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
       e.preventDefault(); // 브라우저 기본 '페이지 저장' 차단
@@ -361,12 +386,12 @@ export function mountApp(root: AppRoot): void {
     }
   });
 
-  cleanBtn.addEventListener('click', () => {
+  function doClean(): void {
     if (editor.getValue() === '') return;
     editor.setValue(''); // onChange가 persist까지 처리. Cmd/Ctrl+Z로 복구 가능
     applyDiagnostics([]);
     showToast('내용을 지웠습니다 · Cmd/Ctrl+Z로 되돌리기');
-  });
+  }
 
   refreshToolbarForFormat();
   if (initial.d) applyDiagnostics(format(initial.d, currentFormat).diagnostics);

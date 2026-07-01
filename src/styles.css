@@ -1,23 +1,63 @@
-:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  /* 글래스(간유리) 테마 변수 — 테마설정 슬라이더가 --glass-alpha/--glass-blur를 실시간 변경 */
+  --glass-alpha: 0.65; /* 콘텐츠 패널(트리·하이라이트) 투명도: 낮을수록 뒤 글자가 더 보임 */
+  --glass-blur: 8px;
+  --chrome-alpha: 0.9; /* 메뉴/다이얼로그 등 크롬은 가독성 위해 더 불투명 */
+  --glass-rgb: 255, 255, 255; /* 라이트 간유리 바탕 */
+  --edge-rgb: 0, 0, 0; /* 테두리/호버 */
+}
+@media (prefers-color-scheme: dark) {
+  :root { --glass-rgb: 28, 30, 36; --edge-rgb: 255, 255, 255; }
+}
+
 body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
 #content { flex: 1; display: flex; min-height: 0; }
 #editor { flex: 1; overflow: auto; min-width: 0; }
-#status { padding: 4px 8px; font-size: 12px; border-top: 1px solid #8884; }
-#toolbar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid #8884; align-items: center; }
-#toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
-#panel { order: -1; width: 34%; max-width: 480px; max-height: none; overflow: auto; padding: 8px;
-  border-top: none; border-right: 1px solid #8884; }
+#status { padding: 4px 8px; font-size: 12px; border-top: 1px solid rgba(var(--edge-rgb), 0.15); }
+
+/* ── 메뉴바 (편집/보기) ── */
+#toolbar { position: relative; z-index: 60; display: flex; gap: 8px; padding: 8px; align-items: center;
+  background: rgba(var(--glass-rgb), var(--chrome-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-bottom: 1px solid rgba(var(--edge-rgb), 0.12); }
+#format-select { font: inherit; padding: 3px 6px; border-radius: 8px;
+  border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
+.menu-btn { font: inherit; padding: 4px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(var(--edge-rgb), 0.15); background: rgba(var(--glass-rgb), 0.4); }
+.menu-btn:hover { background: rgba(var(--edge-rgb), 0.08); }
+.menu-dropdown { position: fixed; z-index: 100; min-width: 150px; padding: 6px; border-radius: 12px;
+  display: flex; flex-direction: column; gap: 2px;
+  background: rgba(var(--glass-rgb), var(--chrome-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgba(var(--edge-rgb), 0.15); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22); }
+.menu-item { font: inherit; text-align: left; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+  border: none; background: none; color: inherit; }
+.menu-item:hover:not(:disabled) { background: rgba(var(--edge-rgb), 0.09); }
+.menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── 트리 패널(간유리 사이드바) ── */
+#panel { order: -1; width: 34%; max-width: 480px; overflow: auto; padding: 8px;
+  background: rgba(var(--glass-rgb), var(--glass-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-right: 1px solid rgba(var(--edge-rgb), 0.12); }
 .tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; }
 .tree-label { cursor: pointer; }
-.tree-label:hover { background: #8882; }
+.tree-label:hover { background: rgba(var(--edge-rgb), 0.1); }
 .tree-children { margin-left: 16px; }
-.tree-toggle { background: none; border: none; cursor: pointer; padding: 0 4px; }
+.tree-toggle { background: none; border: none; cursor: pointer; padding: 0 4px; color: inherit; }
 .tree-node.partial > .tree-label { opacity: 0.6; }
 .markdown-body { line-height: 1.6; }
-#toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-  background: #222; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 13px; }
-#save-dialog { border: 1px solid #8886; border-radius: 8px; padding: 16px 18px; max-width: min(90vw, 520px);
-  color-scheme: light dark; }
+
+#toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 200;
+  background: #222; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
+
+/* ── 저장 팝업(간유리) ── */
+#save-dialog { border: 1px solid rgba(var(--edge-rgb), 0.2); border-radius: 14px; padding: 16px 18px;
+  max-width: min(90vw, 520px); color-scheme: light dark;
+  background: rgba(var(--glass-rgb), var(--chrome-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
 #save-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
 .save-msg { font-weight: 600; margin: 0 0 4px; }
 .save-restore { margin: 0 0 10px; font-size: 13px; opacity: 0.8; }
@@ -27,14 +67,33 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
 .save-site { margin: 0 0 10px; display: flex; align-items: center; gap: 6px; }
 .save-site-note { font-size: 12px; opacity: 0.7; }
 #save-dialog form { margin: 0; text-align: right; }
-#rules { max-height: 40vh; overflow: auto; padding: 8px; border-top: 1px solid #8884;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px; align-content: start; }
-/* 규칙 = 카드: 위(체크·정규식·삭제) / 아래(이름·글자색·배경색). 카드가 가로폭을 채우며 자동 줄바꿈. */
+
+/* ── 테마설정 팝오버(비모달 → 뒤 패널 변화가 실시간으로 보임) ── */
+.theme-panel { position: fixed; top: 52px; right: 12px; z-index: 90; width: 240px; padding: 12px 14px;
+  border-radius: 14px; display: flex; flex-direction: column; gap: 10px;
+  background: rgba(var(--glass-rgb), var(--chrome-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgba(var(--edge-rgb), 0.15); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22); }
+.theme-title { font-weight: 600; }
+.theme-row { display: grid; grid-template-columns: 40px 1fr 44px; align-items: center; gap: 8px; font-size: 13px; }
+.theme-slider { width: 100%; }
+.theme-val { text-align: right; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.theme-close { align-self: flex-end; font: inherit; padding: 4px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
+
+/* ── 하이라이트 규칙 패널 = 에디터 위 떠 있는 간유리 오버레이(뒤 글자 비쳐 보임) ── */
+#rules { position: fixed; left: 12px; right: 12px; bottom: 40px; z-index: 50; max-height: 45vh; overflow: auto;
+  padding: 10px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
+  background: rgba(var(--glass-rgb), var(--glass-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgba(var(--edge-rgb), 0.15);
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; align-content: start; }
+/* 규칙 = 카드: 위(체크·정규식·삭제) / 아래(이름·글자색·배경색) */
 .rule-row { display: grid; gap: 4px 6px; align-items: center;
   grid-template-columns: auto 1fr auto auto;
   grid-template-areas: "en regex regex del" "name name text bg";
-  border: 1px solid #8884; border-radius: 8px; padding: 8px; }
+  border: 1px solid rgba(var(--edge-rgb), 0.15); border-radius: 10px; padding: 8px;
+  background: rgba(var(--glass-rgb), 0.55); }
 .rule-enabled { grid-area: en; }
 .rule-regex { grid-area: regex; }
 .rule-del { grid-area: del; }
@@ -45,13 +104,18 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
   min-width: 0; width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; }
 .rule-row input.rule-regex.invalid { outline: 1px solid #c0392b; background: #c0392b22; }
 .rule-row input[type="color"] { width: 28px; height: 24px; padding: 0; }
-.rule-del { background: none; border: none; cursor: pointer; justify-self: end; }
-.rule-add { grid-column: 1 / -1; justify-self: start; }
-.ctx-highlight { position: fixed; z-index: 1000; background: Canvas; color: CanvasText;
-  border: 1px solid #8886; border-radius: 8px; padding: 8px; box-shadow: 0 4px 16px #0003; }
+.rule-del { background: none; border: none; cursor: pointer; justify-self: end; color: inherit; }
+.rule-add { grid-column: 1 / -1; justify-self: start; font: inherit; padding: 4px 12px; border-radius: 8px;
+  cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
+
+/* ── 우클릭 색상 팔레트(간유리) ── */
+.ctx-highlight { position: fixed; z-index: 1000; padding: 8px; border-radius: 12px;
+  background: rgba(var(--glass-rgb), var(--chrome-alpha));
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgba(var(--edge-rgb), 0.15); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22); }
 .ctx-label { font-size: 12px; margin-bottom: 6px; max-width: 240px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctx-swatches { display: grid; grid-template-columns: repeat(6, 24px); gap: 6px; }
-.ctx-swatch { width: 24px; height: 24px; border: 1px solid #0003; border-radius: 4px;
+.ctx-swatch { width: 24px; height: 24px; border: 1px solid rgba(var(--edge-rgb), 0.2); border-radius: 6px;
   cursor: pointer; padding: 0; }
 .ctx-swatch:hover { outline: 2px solid #4a90d9; }

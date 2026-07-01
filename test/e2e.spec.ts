@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+// 메뉴바(편집/보기) 항목 실행: 메뉴 열고 → 항목 클릭
+async function menuAction(page: Page, menu: string, item: string): Promise<void> {
+  await page.locator('.menu-btn', { hasText: menu }).click();
+  await page.locator('.menu-item', { hasText: item }).click();
+}
 
 test('정렬 → 트리 → 저장 → 새로고침 복원', async ({ page }) => {
   await page.goto('/');
@@ -6,13 +12,13 @@ test('정렬 → 트리 → 저장 → 새로고침 복원', async ({ page }) =>
   await editor.click();
   await page.keyboard.type('{"a":1,"b":[2,3]}');
 
-  await page.getByRole('button', { name: '정렬' }).click();
+  await menuAction(page, '보기', '정렬');
   await expect(page.locator('.cm-content')).toContainText('"a": 1');
 
-  await page.getByRole('button', { name: '트리' }).click();
+  await menuAction(page, '보기', '트리');
   await expect(page.locator('#panel .tree-node').first()).toBeVisible();
 
-  await page.getByRole('button', { name: '저장하기' }).click();
+  await menuAction(page, '편집', '저장');
   await expect(page.locator('#save-dialog')).toBeVisible();
   await expect(page.locator('#save-dialog .save-url')).toHaveValue(/#/);
   await expect.poll(() => page.url()).toContain('#');
@@ -36,7 +42,7 @@ test('클린 버튼이 에디터 내용을 지운다', async ({ page }) => {
   await page.locator('.cm-content').click();
   await page.keyboard.type('{"a":1}');
   await expect(page.locator('.cm-content')).toContainText('"a"');
-  await page.getByRole('button', { name: '클린' }).click();
+  await menuAction(page, '편집', '클린');
   await expect(page.locator('.cm-content')).toHaveText('');
 });
 
@@ -45,7 +51,7 @@ test('저장 팝업의 [사이트만 공유하기]는 문서 없는 도구 링�
   await page.goto('/');
   await page.locator('.cm-content').click();
   await page.keyboard.type('{"a":1}');
-  await page.getByRole('button', { name: '저장하기' }).click();
+  await menuAction(page, '편집', '저장');
   await page.getByRole('button', { name: '사이트만 공유하기' }).click();
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).not.toContain('#'); // 프래그먼트(문서) 없음
@@ -57,7 +63,7 @@ test('깨진 JSON은 상태줄에 줄:열 에러를 표시', async ({ page }) =>
   await page.locator('.cm-content').click();
   await page.keyboard.type('{\n"a":1\n"b":2\n}');
   // 정렬은 복구 후 유효해지므로, 깨진 입력의 진단은 트리(뷰) 경로로 확인
-  await page.getByRole('button', { name: '트리' }).click();
+  await menuAction(page, '보기', '트리');
   await expect(page.locator('#status')).toContainText('줄');
 });
 
@@ -66,7 +72,7 @@ test('로그에 박힌 JSON을 정렬로 추출(JSON 선택)', async ({ page }) 
   await page.locator('#format-select').selectOption('json');
   await page.locator('.cm-content').click();
   await page.keyboard.type('log body={"x":1}');
-  await page.getByRole('button', { name: '정렬' }).click();
+  await menuAction(page, '보기', '정렬');
   await expect(page.locator('.cm-content')).toContainText('"x": 1');
 });
 
@@ -75,13 +81,13 @@ test('Markdown 미리보기 렌더', async ({ page }) => {
   await page.locator('#format-select').selectOption('markdown');
   await page.locator('.cm-content').click();
   await page.keyboard.type('# 안녕');
-  await page.getByRole('button', { name: '미리보기' }).click();
+  await menuAction(page, '보기', '미리보기');
   await expect(page.locator('#panel .markdown-body h1')).toHaveText('안녕');
 });
 
 test('저장 팝업의 [닫기] 버튼이 다이얼로그를 닫는다', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '저장하기' }).click();
+  await menuAction(page, '편집', '저장');
   await expect(page.locator('#save-dialog')).toBeVisible();
   await page.locator('#save-dialog').getByRole('button', { name: '닫기' }).click();
   await expect(page.locator('#save-dialog')).toBeHidden();
@@ -89,16 +95,16 @@ test('저장 팝업의 [닫기] 버튼이 다이얼로그를 닫는다', async (
 
 test('저장 팝업을 닫은 뒤 하이라이트 메뉴가 다시 동작한다(모달이 막지 않음)', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '저장하기' }).click();
+  await menuAction(page, '편집', '저장');
   await page.locator('#save-dialog').getByRole('button', { name: '닫기' }).click();
   await expect(page.locator('#save-dialog')).toBeHidden();
-  await page.getByRole('button', { name: '하이라이트' }).click();
+  await menuAction(page, '보기', '하이라이트');
   await expect(page.locator('#rules .rule-add')).toBeVisible();
 });
 
 test('하이라이트 패널을 열면 바로 입력 가능한 규칙 줄이 보인다', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '하이라이트' }).click();
+  await menuAction(page, '보기', '하이라이트');
   // 빈 상태로 열어도 정규식 입력 칸이 바로 보여야 한다(패널이 '안 열린 것처럼' 보이지 않게)
   await expect(page.locator('#rules .rule-regex')).toBeVisible();
 });
@@ -108,7 +114,7 @@ test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 �
   await page.locator('.cm-content').click();
   await page.keyboard.type('hello world hello');
 
-  await page.getByRole('button', { name: '하이라이트' }).click();
+  await menuAction(page, '보기', '하이라이트');
   // 패널을 열면 입력 줄이 자동으로 보이므로 바로 정규식 입력
   await page.locator('#rules .rule-regex').first().fill('hello');
 
@@ -117,7 +123,7 @@ test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 �
 
   // 새로고침 후에도 규칙이 localStorage에서 복원
   await page.reload();
-  await page.getByRole('button', { name: '하이라이트' }).click();
+  await menuAction(page, '보기', '하이라이트');
   await expect(page.locator('#rules .rule-regex').first()).toHaveValue('hello');
 });
 
@@ -183,7 +189,7 @@ test('우클릭 → 색상 선택 → 선택 텍스트가 하이라이트 규칙
   // 두 'needle'에 배경 강조 span 출현
   await expect(page.locator('.cm-content span[style*="background-color"]').first()).toBeVisible();
   // 규칙 패널에 규칙 1개 추가됨
-  await page.getByRole('button', { name: '하이라이트' }).click();
+  await menuAction(page, '보기', '하이라이트');
   await expect(page.locator('#rules .rule-regex')).toHaveCount(1);
   await expect(page.locator('#rules .rule-regex').first()).toHaveValue('needle');
 });
@@ -217,8 +223,8 @@ test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ p
   await page.goto('/');
   await page.locator('.cm-content').click();
   await page.keyboard.type('{"alpha":111,"beta":222}');
-  await page.getByRole('button', { name: '정렬' }).click();
-  await page.getByRole('button', { name: '트리' }).click();
+  await menuAction(page, '보기', '정렬');
+  await menuAction(page, '보기', '트리');
 
   // 좌우 분할: 트리 패널이 보임
   await expect(page.locator('#panel .tree-node').first()).toBeVisible();
@@ -232,7 +238,7 @@ test('트리 패널 열림 상태가 URL에 저장되어 새로고침 후에도 
   await page.goto('/');
   await page.locator('.cm-content').click();
   await page.keyboard.type('{"a":1}');
-  await page.getByRole('button', { name: '트리' }).click();
+  await menuAction(page, '보기', '트리');
   await expect(page.locator('#panel .tree-node').first()).toBeVisible();
   await page.waitForTimeout(500); // persist(디바운스 400ms)가 해시에 반영될 시간
   await page.reload();
@@ -244,7 +250,7 @@ test('하이라이트 규칙이 URL로 공유된다(빈 localStorage 새 세션�
   await page.goto('/');
   await page.locator('.cm-content').click();
   await page.keyboard.type('hello');
-  await page.getByRole('button', { name: '하이라이트' }).click();
+  await menuAction(page, '보기', '하이라이트');
   await page.locator('#rules .rule-regex').first().fill('hello');
   await page.waitForTimeout(500); // 규칙 편집 → persist 반영
   const shared = page.url();
@@ -261,4 +267,21 @@ test('하이라이트 규칙이 URL로 공유된다(빈 localStorage 새 세션�
   const stored = await fresh.evaluate(() => localStorage.getItem('simpleparser.highlightRules'));
   expect(stored).toBeNull();
   await ctx.close();
+});
+
+test('테마설정에서 투명도를 바꾸면 --glass-alpha가 실시간 반영·저장된다', async ({ page }) => {
+  await page.goto('/');
+  await menuAction(page, '보기', '테마설정');
+  await expect(page.locator('#theme-panel')).toBeVisible();
+  // 첫 슬라이더 = 투명도. 범위 입력이라 value 설정 + input 이벤트 디스패치
+  await page.locator('#theme-panel .theme-slider').first().evaluate((el: HTMLInputElement) => {
+    el.value = '30';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const alpha = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--glass-alpha').trim(),
+  );
+  expect(alpha).toBe('0.3');
+  const stored = await page.evaluate(() => localStorage.getItem('simpleparser.theme'));
+  expect(stored).toContain('0.3');
 });
