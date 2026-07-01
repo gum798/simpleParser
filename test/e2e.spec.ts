@@ -116,6 +116,57 @@ test('압축 JSON을 붙여넣으면 자동으로 정렬된다(버튼 없이)', 
   await expect(page.locator('.cm-content')).toContainText('"a": 1');
 });
 
+test('정규화가 필요한 JSON(소수)도 붙여넣으면 자동 정렬된다', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '{"n":1.0,"m":2}');
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  // 1.0→1 정규화가 있어도 '충실한 정렬'이라 자동 적용 → 공백 있는 정렬 표기 등장
+  await expect(page.locator('.cm-content')).toContainText('"n": 1');
+});
+
+test('중복 키 JSON은 붙여넣어도 자동 정렬로 병합되지 않는다(데이터 손실 방지)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '{"a":1,"a":2}');
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  // 자동 정렬 보류 → 원문 유지(중복 키 그대로), 마지막 값으로 병합되지 않음
+  await expect(page.locator('.cm-content')).toContainText('{"a":1,"a":2}');
+});
+
+test('우클릭 → 색상 선택 → 선택 텍스트가 하이라이트 규칙으로 추가', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('needle haystack needle');
+  // 첫 단어 'needle'(6자) 선택
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Shift+ArrowRight');
+  // 우클릭(합성 contextmenu) → 색상 팔레트
+  await page.evaluate(() => {
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 }));
+  });
+  await expect(page.locator('.ctx-highlight')).toBeVisible();
+  await page.locator('.ctx-swatch').first().click();
+  // 두 'needle'에 배경 강조 span 출현
+  await expect(page.locator('.cm-content span[style*="background-color"]').first()).toBeVisible();
+  // 규칙 패널에 규칙 1개 추가됨
+  await page.getByRole('button', { name: '하이라이트' }).click();
+  await expect(page.locator('#rules .rule-regex')).toHaveCount(1);
+  await expect(page.locator('#rules .rule-regex').first()).toHaveValue('needle');
+});
+
 test('자동 정렬은 주변 텍스트를 지우지 않는다(붙여넣기 데이터 손실 방지)', async ({ page }) => {
   await page.goto('/');
   await page.locator('#format-select').selectOption('json'); // 수동 JSON → 감지 우회, 자동 정렬 경로 강제

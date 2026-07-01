@@ -1,6 +1,35 @@
-import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
+import { parse, parseTree, printParseErrorCode, type Node, type ParseError } from 'jsonc-parser';
 import type { Diagnostic, FormatResult } from '../types';
 import { offsetToLineCol } from '../util/offsetToLineCol';
+
+/**
+ * 어떤 객체든 같은 키가 두 번 나오면 true.
+ * JSON.parse는 중복 키를 조용히 마지막 값만 남기므로(데이터 손실), 자동 정렬 보류 판단에 쓴다.
+ */
+export function hasDuplicateKeys(text: string): boolean {
+  const root = parseTree(text);
+  if (!root) return false;
+  let found = false;
+  const walk = (node: Node): void => {
+    if (found) return;
+    if (node.type === 'object' && node.children) {
+      const seen = new Set<string>();
+      for (const prop of node.children) {
+        const key = prop.children?.[0]?.value;
+        if (typeof key === 'string') {
+          if (seen.has(key)) {
+            found = true;
+            return;
+          }
+          seen.add(key);
+        }
+      }
+    }
+    if (node.children) for (const c of node.children) walk(c);
+  };
+  walk(root);
+  return found;
+}
 
 export function parseJsonTolerant(text: string): { value: unknown; diagnostics: Diagnostic[] } {
   const errors: ParseError[] = [];
@@ -58,13 +87,20 @@ export function resolveJson(text: string): JsonResolution {
 export function formatJson(text: string): FormatResult {
   const r = resolveJson(text);
   if (r.kind === 'value') {
-    return { output: JSON.stringify(r.value, null, 2), diagnostics: [] };
+    // 전체가 깨끗한 단일 JSON → 유니코드/숫자 정규화는 값이 동일하므로 충실.
+    // 단 중복 키는 JSON.parse가 마지막 값만 남겨 데이터가 사라지므로 자동 정렬 보류(faithful=false).
+    return { output: JSON.stringify(r.value, null, 2), diagnostics: [], faithful: !hasDuplicateKeys(text) };
   }
   if (r.kind === 'blocks') {
-    return { output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'), diagnostics: [] };
+    // 로그 등에서 추출 → 주변 텍스트를 버리므로 자동 정렬엔 부적합(수동 [정렬] 전용)
+    return {
+      output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'),
+      diagnostics: [],
+      faithful: false,
+    };
   }
   const output = r.value === undefined ? undefined : JSON.stringify(r.value, null, 2);
-  return { output, diagnostics: r.diagnostics };
+  return { output, diagnostics: r.diagnostics, faithful: false }; // 관용 복구(주석 제거 등) → 자동 보류
 }
 
 /**
