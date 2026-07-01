@@ -2,8 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 
 // 메뉴바(편집/보기) 항목 실행: 메뉴 열고 → 항목 클릭
 async function menuAction(page: Page, menu: string, item: string): Promise<void> {
-  await page.locator('.menu-btn', { hasText: menu }).click();
-  await page.locator('.menu-item', { hasText: item }).click();
+  await page.locator('.menu-btn', { hasText: new RegExp(`^${menu} ▾$`) }).click();
+  await page.locator('.menu-item', { hasText: new RegExp(`^${item}$`) }).click();
 }
 
 test('정렬 → 트리 → 저장 → 새로고침 복원', async ({ page }) => {
@@ -100,6 +100,16 @@ test('저장 팝업을 닫은 뒤 하이라이트 메뉴가 다시 동작한다(
   await expect(page.locator('#save-dialog')).toBeHidden();
   await menuAction(page, '보기', '하이라이트');
   await expect(page.locator('#rules .rule-add')).toBeVisible();
+});
+
+test('하이라이트 패널은 기본 숨김이고 토글로 열고 닫힌다', async ({ page }) => {
+  await page.goto('/');
+  // 오버레이가 로드 때부터 떠 있지 않아야 한다([hidden]이 실제로 숨겨야 함)
+  await expect(page.locator('#rules')).toBeHidden();
+  await menuAction(page, '보기', '하이라이트');
+  await expect(page.locator('#rules')).toBeVisible();
+  await menuAction(page, '보기', '하이라이트');
+  await expect(page.locator('#rules')).toBeHidden();
 });
 
 test('하이라이트 패널을 열면 바로 입력 가능한 규칙 줄이 보인다', async ({ page }) => {
@@ -281,7 +291,8 @@ test('테마설정에서 투명도를 바꾸면 --glass-alpha가 실시간 반�
   const alpha = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue('--glass-alpha').trim(),
   );
-  expect(alpha).toBe('0.3');
+  expect(alpha).toBe('0.3'); // 적용은 실시간
+  await page.waitForTimeout(500); // 저장은 디바운스(400ms)
   const stored = await page.evaluate(() => localStorage.getItem('simpleparser.theme'));
   expect(stored).toContain('0.3');
 });

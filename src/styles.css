@@ -88,6 +88,8 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid rgba(var(--edge-rgb), 0.15);
   display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; align-content: start; }
+/* id 선택자의 display가 [hidden]을 이기므로 명시적으로 숨김(오버레이가 항상 떠 있지 않게) */
+#rules[hidden] { display: none; }
 /* 규칙 = 카드: 위(체크·정규식·삭제) / 아래(이름·글자색·배경색) */
 .rule-row { display: grid; gap: 4px 6px; align-items: center;
   grid-template-columns: auto 1fr auto auto;

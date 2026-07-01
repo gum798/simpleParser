@@ -99,11 +99,13 @@ export function mountApp(root: AppRoot): void {
   // 글래스 테마(투명도/흐림) 로드 후 CSS 변수에 반영
   let theme = loadTheme();
   applyTheme(theme);
+  // 적용은 실시간(가벼운 CSS 변수), 저장은 디바운스 → 슬라이더 드래그 중 localStorage 폭주 방지
+  const persistTheme = debounce(() => saveTheme(theme), 400);
   function openTheme(): void {
     openThemePanel(theme, (t) => {
       theme = t;
       applyTheme(t);
-      saveTheme(t);
+      persistTheme();
     });
   }
 
