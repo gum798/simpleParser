@@ -4,7 +4,7 @@ export interface SwatchColor {
   text: string; // #rrggbb
 }
 
-/** 우클릭 팔레트 프리셋(모두 검정 글자에 밝은 배경). */
+/** 우클릭 팔레트 프리셋 12색(6열 × 2줄, 모두 검정 글자에 밝은 배경). */
 export const PALETTE: SwatchColor[] = [
   { name: '노랑', bg: '#ffff00', text: '#000000' },
   { name: '초록', bg: '#b6f2b6', text: '#000000' },
@@ -12,6 +12,12 @@ export const PALETTE: SwatchColor[] = [
   { name: '분홍', bg: '#ffd6e7', text: '#000000' },
   { name: '주황', bg: '#ffe0b3', text: '#000000' },
   { name: '보라', bg: '#e2d1ff', text: '#000000' },
+  { name: '빨강', bg: '#ffc9c9', text: '#000000' },
+  { name: '청록', bg: '#96f2d7', text: '#000000' },
+  { name: '하늘', bg: '#a5d8ff', text: '#000000' },
+  { name: '라임', bg: '#d8f5a2', text: '#000000' },
+  { name: '자홍', bg: '#eebefa', text: '#000000' },
+  { name: '회색', bg: '#dee2e6', text: '#000000' },
 ];
 
 /** 팝업 라벨/규칙명용: 공백 정리 후 길면 …으로 축약. */
