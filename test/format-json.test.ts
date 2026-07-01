@@ -8,6 +8,17 @@ test('유효 JSON은 2칸 들여쓰기로 정렬', () => {
   expect(r.output).toBe('{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}');
 });
 
+test('충실도(faithful): 단일 JSON은 true — 유니코드/소수 정규화가 있어도', () => {
+  // 자동 붙여넣기 정렬이 적용되어야 하는 케이스(값 보존, 구조 동일)
+  expect(formatJson('{"a":1,"b":"x"}').faithful).toBe(true);
+  expect(formatJson('{"emoji":"\\ud83d\\ude00","n":1.0}').faithful).toBe(true);
+});
+
+test('충실도(faithful): 로그 추출(blocks)·관용 복구(tolerant)는 false — 자동 정렬 보류', () => {
+  expect(formatJson('INFO body={"a":1}').faithful).toBe(false); // blocks
+  expect(formatJson('{"a":1 // 메모\n}').faithful).toBe(false); // tolerant(주석)
+});
+
 test('콤마 빠진 JSON은 진단 + 줄:열 보고', () => {
   const r = formatJson('{\n  "a": 1\n  "b": 2\n}');
   expect(r.diagnostics.length).toBeGreaterThan(0);

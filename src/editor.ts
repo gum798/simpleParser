@@ -37,6 +37,7 @@ export function toCmDiagnostics(text: string, diags: Diagnostic[]): CmDiagnostic
 
 export interface Editor {
   getValue(): string;
+  getSelectionText(): string;
   setValue(s: string): void;
   setLanguage(fmt: Format): void;
   setDiagnostics(d: Diagnostic[]): void;
@@ -71,6 +72,10 @@ export function createEditor(
 
   return {
     getValue: () => view.state.doc.toString(),
+    getSelectionText: () => {
+      const { from, to } = view.state.selection.main;
+      return view.state.sliceDoc(from, to);
+    },
     setValue: (s) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: s } }),
     setLanguage: (fmt) => view.dispatch({ effects: language.reconfigure(langFor[fmt]()) }),

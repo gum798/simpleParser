@@ -33,3 +33,11 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
 .rule-row input[type="color"] { width: 28px; height: 24px; padding: 0; }
 .rule-del { background: none; border: none; cursor: pointer; }
 .rule-add { align-self: flex-start; }
+.ctx-highlight { position: fixed; z-index: 1000; background: Canvas; color: CanvasText;
+  border: 1px solid #8886; border-radius: 8px; padding: 8px; box-shadow: 0 4px 16px #0003; }
+.ctx-label { font-size: 12px; margin-bottom: 6px; max-width: 240px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-swatches { display: flex; gap: 6px; }
+.ctx-swatch { width: 24px; height: 24px; border: 1px solid #0003; border-radius: 4px;
+  cursor: pointer; padding: 0; }
+.ctx-swatch:hover { outline: 2px solid #4a90d9; }

@@ -58,13 +58,19 @@ export function resolveJson(text: string): JsonResolution {
 export function formatJson(text: string): FormatResult {
   const r = resolveJson(text);
   if (r.kind === 'value') {
-    return { output: JSON.stringify(r.value, null, 2), diagnostics: [] };
+    // 전체가 깨끗한 단일 JSON → 구조 보존(유니코드/숫자 정규화는 값 동일) → 자동 정렬 OK
+    return { output: JSON.stringify(r.value, null, 2), diagnostics: [], faithful: true };
   }
   if (r.kind === 'blocks') {
-    return { output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'), diagnostics: [] };
+    // 로그 등에서 추출 → 주변 텍스트를 버리므로 자동 정렬엔 부적합(수동 [정렬] 전용)
+    return {
+      output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'),
+      diagnostics: [],
+      faithful: false,
+    };
   }
   const output = r.value === undefined ? undefined : JSON.stringify(r.value, null, 2);
-  return { output, diagnostics: r.diagnostics };
+  return { output, diagnostics: r.diagnostics, faithful: false }; // 관용 복구(주석 제거 등) → 자동 보류
 }
 
 /**

@@ -9,6 +9,8 @@ import { createEditor } from './editor';
 import { debounce } from './util/debounce';
 import { mountRulesPanel, createRule } from './rulesPanel';
 import { loadRules, saveRules } from './highlight/store';
+import { mountContextHighlight, truncateLabel } from './contextHighlight';
+import { regexEscape } from './util/regexEscape';
 
 const FORMATS: Format[] = ['json', 'html', 'xml', 'yaml', 'markdown'];
 const URL_WARN_LEN = 10_000;
@@ -22,16 +24,6 @@ export function canFormat(fmt: Format): boolean {
 /** 붙여넣기 자동 정렬을 수행할지 결정한다: 정렬 가능 포맷 + 비어있지 않은 작은 입력만(저부하). */
 export function shouldAutoFormat(text: string, fmt: Format): boolean {
   return text.trim() !== '' && text.length <= AUTO_FORMAT_MAX && canFormat(fmt);
-}
-
-/**
- * 두 문자열이 공백(들여쓰기/줄바꿈)만 다르고 그 외 문자는 동일하면 true.
- * 자동(붙여넣기) 정렬이 '비파괴 재들여쓰기'인지 판별하는 데 쓴다 — false면 정렬이 내용을
- * 바꾼다는 뜻이므로(로그 속 JSON 추출, 주석 제거, 중복키 병합 등) 자동 적용을 보류한다.
- * 문자열 내부 공백도 양쪽에서 똑같이 제거되므로 비교에 영향을 주지 않는다.
- */
-export function isReindentOnly(input: string, output: string): boolean {
-  return input.replace(/\s+/g, '') === output.replace(/\s+/g, '');
 }
 
 export function viewLabel(fmt: Format): string {
@@ -181,8 +173,9 @@ export function mountApp(root: AppRoot): void {
       // 안전 정책: 정렬 결과가 새 에러를 만들면 보류
       const after = format(before.output, currentFormat);
       const noNewErrors = after.diagnostics.length <= before.diagnostics.length;
-      // 자동 경로는 내용이 보존되는(공백만 바뀌는) 경우에만 적용 → 추출/주석제거/중복키병합 자동 저지름 방지
-      const contentPreserved = !opts?.safeOnly || isReindentOnly(input, before.output);
+      // 자동 경로는 '충실한 정렬'일 때만 적용 → 추출/주석제거 등 내용 변경은 보류(수동 [정렬] 전용).
+      // faithful 미설정(json 외 포맷)은 추출 위험이 없어 충실로 간주.
+      const contentPreserved = !opts?.safeOnly || before.faithful !== false;
       if (noNewErrors && contentPreserved) {
         editor.setValue(before.output);
         applyDiagnostics(after.diagnostics); // 교체된 새 내용에 맞는 진단(오프셋 일치)
@@ -228,6 +221,31 @@ export function mountApp(root: AppRoot): void {
   root.editorHost.addEventListener('paste', (e) => {
     const content = root.editorHost.querySelector('.cm-content');
     if (content && e.target instanceof Node && content.contains(e.target)) idle(autoParse);
+  });
+
+  // 우클릭 → 색상 팔레트 → 선택 텍스트를 리터럴 하이라이트 규칙으로 추가(같은 규칙은 색만 갱신)
+  mountContextHighlight({
+    host: root.editorHost,
+    getSelectionText: () => editor.getSelectionText(),
+    onPick: (text, color) => {
+      const regex = regexEscape(text);
+      const idx = currentRules.findIndex((r) => r.regex === regex);
+      const next =
+        idx >= 0
+          ? currentRules.map((r, i) =>
+              i === idx ? { ...r, bgColor: color.bg, textColor: color.text, enabled: true } : r,
+            )
+          : [
+              ...currentRules,
+              { ...createRule(), regex, name: truncateLabel(text, 30), bgColor: color.bg, textColor: color.text },
+            ];
+      currentRules = next;
+      saveRules(next);
+      editor.setHighlightRules(next);
+      rulesPanel.render(next);
+      persist();
+      showToast(`"${truncateLabel(text, 12)}" 강조 규칙 적용`);
+    },
   });
 
   function jumpTo(node: TreeNode): void {
