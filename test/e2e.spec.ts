@@ -6,13 +6,18 @@ async function menuAction(page: Page, menu: string, item: string): Promise<void>
   await page.locator('.menu-item', { hasText: new RegExp(`^${item}$`) }).click();
 }
 
+// 정렬은 메뉴 밖 독립 버튼(.menu-btn, 텍스트 '정렬', ▾ 없음)
+async function clickFormat(page: Page): Promise<void> {
+  await page.locator('.menu-btn', { hasText: /^정렬$/ }).click();
+}
+
 test('정렬 → 트리 → 저장 → 새로고침 복원', async ({ page }) => {
   await page.goto('/');
   const editor = page.locator('.cm-content');
   await editor.click();
   await page.keyboard.type('{"a":1,"b":[2,3]}');
 
-  await menuAction(page, '보기', '정렬');
+  await clickFormat(page);
   await expect(page.locator('.cm-content')).toContainText('"a": 1');
 
   await menuAction(page, '보기', '트리');
@@ -72,7 +77,7 @@ test('로그에 박힌 JSON을 정렬로 추출(JSON 선택)', async ({ page }) 
   await page.locator('#format-select').selectOption('json');
   await page.locator('.cm-content').click();
   await page.keyboard.type('log body={"x":1}');
-  await menuAction(page, '보기', '정렬');
+  await clickFormat(page);
   await expect(page.locator('.cm-content')).toContainText('"x": 1');
 });
 
@@ -253,7 +258,7 @@ test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ p
   await page.goto('/');
   await page.locator('.cm-content').click();
   await page.keyboard.type('{"alpha":111,"beta":222}');
-  await menuAction(page, '보기', '정렬');
+  await clickFormat(page);
   await menuAction(page, '보기', '트리');
 
   // 좌우 분할: 트리 패널이 보임
