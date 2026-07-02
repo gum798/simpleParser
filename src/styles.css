@@ -28,9 +28,10 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh; backgrou
 /* 에디터를 투명하게 → 뒤 배경 그라데이션이 은은히 비침(유리감). 텍스트는 그대로 읽힘 */
 #editor { flex: 1; overflow: auto; min-width: 0; background: transparent; }
 #editor .cm-editor, #editor .cm-gutters { background: transparent; }
-/* 하이라이트 오버레이가 열리면 에디터·트리에 하단 여백을 줘 가려지는 내용을 오버레이 위로 스크롤 */
-body.rules-open .cm-content,
-body.rules-open #panel { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
+/* 하이라이트 오버레이가 열리면 도킹 방향으로 여백을 줘 가려지는 내용을 오버레이 밖으로 스크롤 */
+body.rules-open:not(.rules-right) .cm-content,
+body.rules-open:not(.rules-right) #panel { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
+body.rules-open.rules-right .cm-content { padding-right: calc(var(--rules-w, 340px) + 24px); }
 #status { padding: 4px 8px; font-size: 12px;
   border-top: 1px solid rgba(var(--edge-rgb), 0.15);
   background: rgba(var(--glass-rgb), var(--chrome-alpha));
@@ -110,9 +111,17 @@ body.rules-open #panel { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
   background: rgba(var(--glass-rgb), var(--glass-alpha));
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid rgba(var(--edge-rgb), 0.15);
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; align-content: start; }
+  display: flex; flex-direction: column; gap: 8px; }
 /* id 선택자의 display가 [hidden]을 이기므로 명시적으로 숨김(오버레이가 항상 떠 있지 않게) */
 #rules[hidden] { display: none; }
+/* 오른쪽 도킹: 세로 사이드 패널(규칙 카드 1열) */
+#rules.dock-right { top: 52px; bottom: 40px; left: auto; right: 12px; width: min(340px, 85vw); max-height: none; }
+#rules.dock-right .rules-grid { grid-template-columns: 1fr; }
+.rules-header { display: flex; justify-content: flex-end; }
+.rules-dock { font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid rgba(var(--edge-rgb), 0.2); background: rgba(var(--glass-rgb), 0.5); }
+.rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px; align-content: start; }
 /* 규칙 = 카드: 위(체크·정규식·삭제) / 아래(이름·글자색·배경색) */
 .rule-row { display: grid; gap: 4px 6px; align-items: center;
   grid-template-columns: auto 1fr auto auto;

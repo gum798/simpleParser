@@ -118,23 +118,60 @@ export function mountApp(root: AppRoot): void {
   let panelOpen = false;
   let rulesOpen = false;
 
+  // 규칙창 도킹 위치(아래/오른쪽)는 개인 취향 → localStorage에 저장(URL 상태와 무관)
+  const DOCK_KEY = 'simpleparser.rulesDock';
+  let rulesDockRight = false;
+  try {
+    rulesDockRight = localStorage.getItem(DOCK_KEY) === 'right';
+  } catch {
+    /* 프라이빗 모드 등 → 기본(아래) */
+  }
+  const rulesHeader = document.createElement('div');
+  rulesHeader.className = 'rules-header';
+  const dockBtn = button('');
+  dockBtn.className = 'rules-dock';
+  rulesHeader.appendChild(dockBtn);
+  const rulesGrid = document.createElement('div');
+  rulesGrid.className = 'rules-grid';
+  root.rules.append(rulesHeader, rulesGrid);
+
   // URL에 규칙이 있으면 그것으로 시작(공유 링크 재현), 없으면 localStorage 기본값.
   let currentRules = initial.r ?? loadRules();
-  const rulesPanel = mountRulesPanel(root.rules, (rs) => {
+  const rulesPanel = mountRulesPanel(rulesGrid, (rs) => {
     currentRules = rs;
     saveRules(rs);
     editor.setHighlightRules(rs);
     persist(); // 규칙 편집은 localStorage + URL 둘 다 갱신
-    syncRulesPad(); // 규칙 추가/삭제로 오버레이 높이 바뀌면 여백 갱신
+    syncRulesPad(); // 규칙 추가/삭제로 오버레이 크기 바뀌면 여백 갱신
   });
   rulesPanel.render(currentRules);
   editor.setHighlightRules(currentRules);
 
   function syncRulesPad(): void {
-    // 오버레이 실제 높이를 CSS 변수로 → 그만큼 에디터 하단 여백 확보(모든 줄을 오버레이 위로 스크롤)
-    if (root.rules.hidden) document.body.style.removeProperty('--rules-h');
+    // 오버레이 실제 크기를 CSS 변수로 → 도킹 방향에 맞는 여백 확보(가려진 내용을 스크롤로 볼 수 있게)
+    document.body.style.removeProperty('--rules-h');
+    document.body.style.removeProperty('--rules-w');
+    if (root.rules.hidden) return;
+    if (rulesDockRight) document.body.style.setProperty('--rules-w', `${root.rules.offsetWidth}px`);
     else document.body.style.setProperty('--rules-h', `${root.rules.offsetHeight}px`);
   }
+
+  function applyRulesDock(): void {
+    root.rules.classList.toggle('dock-right', rulesDockRight);
+    document.body.classList.toggle('rules-right', rulesDockRight);
+    dockBtn.textContent = rulesDockRight ? '⇩ 아래로' : '⇨ 오른쪽으로';
+    syncRulesPad();
+  }
+  dockBtn.addEventListener('click', () => {
+    rulesDockRight = !rulesDockRight;
+    try {
+      localStorage.setItem(DOCK_KEY, rulesDockRight ? 'right' : 'bottom');
+    } catch {
+      /* 무시 */
+    }
+    applyRulesDock();
+  });
+  applyRulesDock();
 
   // 빈 상태로 열면 입력 가능한 규칙 줄을 바로 보여줘 '패널이 안 열린 것처럼' 보이지 않게 함
   function openRulesPanel(): void {

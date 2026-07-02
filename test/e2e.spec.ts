@@ -166,6 +166,30 @@ test('하이라이트 패널을 열면 바로 입력 가능한 규칙 줄이 보
   await expect(page.locator('#rules .rule-regex')).toBeVisible();
 });
 
+test('규칙창을 오른쪽으로 도킹할 수 있고 새로고침 후에도 유지된다', async ({ page }) => {
+  await page.goto('/');
+  await menuAction(page, '보기', '하이라이트');
+  await page.locator('#rules .rules-dock').click();
+  // 오른쪽 도킹: 패널이 화면 오른쪽 절반에 붙음
+  const vw = page.viewportSize()!.width;
+  const box = await page.locator('#rules').boundingBox();
+  expect(box!.x).toBeGreaterThan(vw / 2);
+  // 에디터에 오른쪽 여백이 생겨 긴 줄도 패널 밖으로 스크롤 가능
+  const padR = await page
+    .locator('.cm-content')
+    .evaluate((el) => parseFloat(getComputedStyle(el).paddingRight));
+  expect(padR).toBeGreaterThan(100);
+  // 도킹 선택은 localStorage에 저장 → 새로고침 후 유지
+  await page.reload();
+  await menuAction(page, '보기', '하이라이트');
+  const box2 = await page.locator('#rules').boundingBox();
+  expect(box2!.x).toBeGreaterThan(vw / 2);
+  // 다시 아래로 되돌리기도 동작
+  await page.locator('#rules .rules-dock').click();
+  const box3 = await page.locator('#rules').boundingBox();
+  expect(box3!.x).toBeLessThan(vw / 2);
+});
+
 test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 유지', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();
