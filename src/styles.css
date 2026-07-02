@@ -44,7 +44,8 @@ body.rules-open .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px)
   border: 1px solid rgba(var(--edge-rgb), 0.18); background: rgba(var(--glass-rgb), 0.5); }
 .menu-btn { font: inherit; font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 8px;
   cursor: pointer; border: 1px solid rgba(var(--edge-rgb), 0.12); background: rgba(var(--glass-rgb), 0.35); }
-.menu-btn:hover { background: rgba(var(--edge-rgb), 0.08); }
+.menu-btn:hover:not(:disabled) { background: rgba(var(--edge-rgb), 0.08); }
+.menu-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .menu-dropdown { position: fixed; z-index: 100; min-width: 148px; padding: 5px; border-radius: 12px;
   display: flex; flex-direction: column; gap: 1px;
   background: rgba(var(--glass-rgb), var(--chrome-alpha));

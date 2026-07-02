@@ -75,7 +75,11 @@ export function mountApp(root: AppRoot): void {
     if (f === currentFormat) opt.selected = true;
     select.appendChild(opt);
   }
-  root.toolbar.append(select);
+  // 정렬은 자주 쓰므로 메뉴 밖 독립 버튼(JSON 선택과 편집 메뉴 사이). markdown이면 비활성.
+  const formatBtn = button('정렬');
+  formatBtn.className = 'menu-btn';
+  formatBtn.addEventListener('click', () => runFormat());
+  root.toolbar.append(select, formatBtn);
   // 관례적 순서(편집 → 보기)의 드롭다운 메뉴. 항목은 열릴 때마다 그려져 동적 라벨/비활성 반영.
   mountMenubar(root.toolbar, [
     {
@@ -88,7 +92,6 @@ export function mountApp(root: AppRoot): void {
     {
       title: '보기',
       items: [
-        { label: '정렬', disabled: () => !canFormat(currentFormat), run: () => runFormat() },
         { label: () => viewLabel(currentFormat), run: toggleView },
         { label: '하이라이트', run: toggleRules },
         { label: '테마설정', run: openTheme },
@@ -166,7 +169,7 @@ export function mountApp(root: AppRoot): void {
   }
 
   function refreshToolbarForFormat(): void {
-    // 정렬 비활성/뷰 라벨은 메뉴가 열릴 때 동적으로 계산 → 여기선 포맷 선택만 동기화
+    formatBtn.disabled = !canFormat(currentFormat); // markdown은 정렬 불가
     select.value = currentFormat;
   }
 
