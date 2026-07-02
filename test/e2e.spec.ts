@@ -33,6 +33,27 @@ test('정렬 → 트리 → 저장 → 새로고침 복원', async ({ page }) =>
   await expect(page.locator('.cm-content')).toContainText('"a"');
 });
 
+test('정렬을 누르면 에디터가 좌상단으로 스크롤된다', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#format-select').selectOption('json');
+  await page.locator('.cm-content').click();
+  // 중복 키 → 자동 정렬 보류 → 긴 한 줄 그대로 유지(가로 스크롤 가능)
+  await page.evaluate(() => {
+    const long = '{"a":1,"z":"' + 'x'.repeat(300) + '","a":2}';
+    const dt = new DataTransfer();
+    dt.setData('text/plain', long);
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500);
+  await page.locator('.cm-scroller').evaluate((el) => el.scrollTo(el.scrollWidth, 0));
+  await expect.poll(() => page.locator('.cm-scroller').evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  await page.locator('.menu-btn', { hasText: /^정렬$/ }).click();
+  // 좌상단으로 복귀(거터 여백 탓 1px 정도는 허용 — 시각적으로 왼쪽 끝)
+  await expect.poll(() => page.locator('.cm-scroller').evaluate((el) => el.scrollLeft)).toBeLessThan(5);
+});
+
 test('Cmd/Ctrl+S 단축키로 저장 팝업 표시', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

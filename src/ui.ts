@@ -223,6 +223,7 @@ export function mountApp(root: AppRoot): void {
       const contentPreserved = !opts?.safeOnly || before.faithful !== false;
       if (noNewErrors && contentPreserved) {
         editor.setValue(before.output);
+        editor.scrollToTop(); // 정렬 후 좌상단으로(이전 가로 스크롤 때문에 빈 화면처럼 보이지 않게)
         applyDiagnostics(after.diagnostics); // 교체된 새 내용에 맞는 진단(오프셋 일치)
       } else {
         if (!opts?.safeOnly) showToast('정렬을 보류했습니다(원문 보존)');

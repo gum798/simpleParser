@@ -38,6 +38,7 @@ export function toCmDiagnostics(text: string, diags: Diagnostic[]): CmDiagnostic
 export interface Editor {
   getValue(): string;
   getSelectionText(): string;
+  scrollToTop(): void;
   setValue(s: string): void;
   setLanguage(fmt: Format): void;
   setDiagnostics(d: Diagnostic[]): void;
@@ -75,6 +76,10 @@ export function createEditor(
     getSelectionText: () => {
       const { from, to } = view.state.selection.main;
       return view.state.sliceDoc(from, to);
+    },
+    // 커서를 문서 처음으로 옮기고 그 위치를 뷰에 노출 → 좌상단으로 스크롤(가로 스크롤도 리셋)
+    scrollToTop: () => {
+      view.dispatch({ selection: { anchor: 0 }, scrollIntoView: true });
     },
     setValue: (s) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: s } }),
