@@ -9,6 +9,7 @@ import { createEditor } from './editor';
 import { debounce } from './util/debounce';
 import { mountRulesPanel, createRule } from './rulesPanel';
 import { loadRules, saveRules } from './highlight/store';
+import { compileRules } from './highlight/matcher';
 import { mountContextHighlight, truncateLabel } from './contextHighlight';
 import { regexEscape } from './util/regexEscape';
 import { loadTheme, saveTheme, applyTheme } from './theme';
@@ -245,6 +246,7 @@ export function mountApp(root: AppRoot): void {
     editor.setHighlightRules(rs);
     persist(); // 규칙 편집은 localStorage + URL 둘 다 갱신
     syncRulesPad(); // 규칙 추가/삭제로 오버레이 크기 바뀌면 여백 갱신
+    if (!root.panel.hidden) renderPanelContent(); // 트리 하이라이트도 즉시 갱신
   });
   rulesPanel.render(currentRules);
   editor.setHighlightRules(currentRules);
@@ -428,6 +430,7 @@ export function mountApp(root: AppRoot): void {
       rulesPanel.render(next);
       syncRulesPad();
       persist();
+      if (!root.panel.hidden) renderPanelContent(); // 트리 하이라이트도 즉시 갱신
       showToast(`"${truncateLabel(text, 12)}" 강조 규칙 적용`);
     },
   });
@@ -455,7 +458,7 @@ export function mountApp(root: AppRoot): void {
         const d = Math.min(Math.max(userDepth ?? Math.max(1, Math.floor(md / 2)), 1), md);
         depthVal.textContent = String(d);
         depthCtrl.hidden = false;
-        panelBody.appendChild(renderTree(treeRoot, jumpTo, d));
+        panelBody.appendChild(renderTree(treeRoot, jumpTo, d, compileRules(currentRules)));
       } else {
         depthCtrl.hidden = true;
       }

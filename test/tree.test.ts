@@ -118,3 +118,28 @@ test('renderTree(expandDepth): 지정 깊이부터 접힌 채 렌더', async () 
   expect(toggles[0].textContent).toBe('▾');
   expect(toggles[1].textContent).toBe('▸');
 });
+
+test('renderTree(rules): 라벨의 매칭 텍스트에 규칙 색 적용', async () => {
+  const { renderTree, buildTree } = await import('../src/tree');
+  const { compileRules } = await import('../src/highlight/matcher');
+  const root = buildTree('{"stage":"MODE_A","ok":true}', 'json').root!;
+  const compiled = compileRules([
+    { id: '1', name: '', regex: 'stage', enabled: true, textColor: '#ff0000', bgColor: '#ffff00' },
+  ]);
+  const el = renderTree(root, () => {}, Infinity, compiled);
+  const marks = Array.from(el.querySelectorAll('.tree-label span'));
+  expect(marks.length).toBeGreaterThan(0);
+  expect(marks[0].textContent).toBe('stage');
+  expect(marks[0].getAttribute('style')).toContain('color:#ff0000');
+  expect(marks[0].getAttribute('style')).toContain('background-color:#ffff00');
+  // 매칭 밖 텍스트는 그대로 유지
+  const label = marks[0].closest('.tree-label')!;
+  expect(label.textContent).toContain('stage: MODE_A');
+});
+
+test('renderTree(rules): 규칙 없으면 span 없이 순수 텍스트', async () => {
+  const { renderTree, buildTree } = await import('../src/tree');
+  const root = buildTree('{"a":1}', 'json').root!;
+  const el = renderTree(root, () => {});
+  expect(el.querySelectorAll('.tree-label span').length).toBe(0);
+});

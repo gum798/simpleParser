@@ -20,6 +20,11 @@ export interface HighlightSpan {
   rule: HighlightRule;
 }
 
+/** 규칙 색을 인라인 스타일로(색은 store에서 #rrggbb 검증됨 — 주입 방어). */
+export function markStyle(rule: { textColor: string; bgColor: string }): string {
+  return `color:${rule.textColor};background-color:${rule.bgColor}`;
+}
+
 export function isValidRegex(pattern: string): boolean {
   if (pattern === '') return true; // 입력 중 빈 값은 무효로 보지 않음
   try {
