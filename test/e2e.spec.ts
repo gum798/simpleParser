@@ -209,6 +209,33 @@ test('오른쪽 도킹 + 트리 동시 열림: OUTPUT 패널이 규칙창에 가
   expect(panel.x + panel.width).toBeLessThanOrEqual(rules.x + 1);
 });
 
+test('하이라이트 글자색이 구문 색을 이기고 실제 렌더에 적용된다', async ({ page }) => {
+  // 구문 하이라이트가 색을 주는 JSON 문자열 토큰("name") 위에 빨강 글자 규칙
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'simpleparser.highlightRules',
+      JSON.stringify([
+        { id: '1', name: 'x', regex: 'name', enabled: true, textColor: '#ff0000', bgColor: '#ffff00' },
+      ]),
+    );
+  });
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"name":"a"}');
+  // 'name' 텍스트를 실제로 감싼 가장 안쪽 요소의 계산된 색이 규칙의 글자색이어야 함
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const spans = Array.from(document.querySelectorAll('.cm-line .sp-hl'));
+        const target = spans.find((s) => s.textContent === 'name');
+        if (!target) return 'no-mark';
+        const inner = target.querySelector('span') ?? target;
+        return getComputedStyle(inner).color;
+      }),
+    )
+    .toBe('rgb(255, 0, 0)');
+});
+
 test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 유지', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

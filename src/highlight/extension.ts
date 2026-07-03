@@ -53,7 +53,12 @@ function buildDecorations(view: EditorView): DecorationSet {
     const text = view.state.sliceDoc(from, to);
     for (const span of findHighlights(text, compiled)) {
       decos.push(
-        Decoration.mark({ attributes: { style: markStyle(span.rule) } }).range(from + span.from, from + span.to),
+        // sp-hl 클래스: 구문 토큰 span이 이 마크 '안에' 중첩되면 클래스 색이 인라인 color를
+        // 덮어쓰므로, CSS(.sp-hl span{color:inherit!important})로 글자색 상속을 강제한다.
+        Decoration.mark({ class: 'sp-hl', attributes: { style: markStyle(span.rule) } }).range(
+          from + span.from,
+          from + span.to,
+        ),
       );
     }
   }

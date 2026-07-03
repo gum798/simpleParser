@@ -92,6 +92,8 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
 #editor .cm-editor { height: 100%; background: transparent; }
 #editor .cm-gutters { background: transparent; border-right: 1px solid var(--border); }
 .cm-content, .cm-gutters { font-family: var(--mono); font-size: 13px; }
+/* 하이라이트 규칙 글자색: 마크 안에 중첩된 구문 토큰 span이 색을 덮어쓰지 못하게 상속 강제 */
+.sp-hl span { color: inherit !important; }
 /* 하이라이트 오버레이가 열리면 도킹 방향으로 여백을 줘 가려지는 내용을 오버레이 밖으로 스크롤 */
 body.rules-open:not(.rules-right) .cm-content,
 body.rules-open:not(.rules-right) #panel .pane-body { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
