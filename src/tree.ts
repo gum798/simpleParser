@@ -1,5 +1,6 @@
 import { parseTree, type Node as JsoncNode } from 'jsonc-parser';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
+import { findHighlights, markStyle, type CompiledRule } from './highlight/matcher';
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
 import { extractJsonSpans, topLevelSpans, parseJsonTolerant } from './format/json';
 import { parseYamlTolerant } from './format/yaml';
@@ -183,18 +184,39 @@ export function maxDepth(node: TreeNode): number {
   return deepest + 1;
 }
 
+/** 라벨 텍스트에 하이라이트 규칙을 적용한 프래그먼트(겹치는 매칭은 앞선 것 우선). */
+function highlightLabel(text: string, compiled: CompiledRule[]): DocumentFragment | string {
+  if (!compiled.some((c) => c.re)) return text;
+  const spans = findHighlights(text, compiled).sort((a, b) => a.from - b.from || b.to - a.to);
+  if (spans.length === 0) return text;
+  const frag = document.createDocumentFragment();
+  let pos = 0;
+  for (const s of spans) {
+    if (s.from < pos) continue; // 겹침 → 이미 칠한 구간 유지
+    if (s.from > pos) frag.append(text.slice(pos, s.from));
+    const m = document.createElement('span');
+    m.setAttribute('style', markStyle(s.rule)); // 색은 store에서 #rrggbb 검증됨
+    m.textContent = text.slice(s.from, s.to);
+    frag.append(m);
+    pos = s.to;
+  }
+  if (pos < text.length) frag.append(text.slice(pos));
+  return frag;
+}
+
 /**
  * expandDepth = 자식을 펼쳐 보여줄 단계 수. 깊이 expandDepth 이상인 노드는 접힌 채 시작
- * (수동 토글로 열 수 있음). 생략하면 전부 펼침.
+ * (수동 토글로 열 수 있음). 생략하면 전부 펼침. rules를 주면 라벨에도 하이라이트 적용.
  */
 export function renderTree(
   root: TreeNode,
   onJump: (node: TreeNode) => void,
   expandDepth = Infinity,
+  rules: CompiledRule[] = [],
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'tree';
-  container.appendChild(renderNode(root, onJump, 0, expandDepth));
+  container.appendChild(renderNode(root, onJump, 0, expandDepth, rules));
   return container;
 }
 
@@ -203,6 +225,7 @@ function renderNode(
   onJump: (node: TreeNode) => void,
   depth: number,
   expandDepth: number,
+  rules: CompiledRule[],
 ): HTMLElement {
   const el = document.createElement('div');
   el.className = 'tree-node' + (node.partial ? ' partial' : '');
@@ -219,16 +242,16 @@ function renderNode(
     const childrenEl = document.createElement('div');
     childrenEl.className = 'tree-children';
     if (collapsed) childrenEl.style.display = 'none';
-    node.children.forEach((c) => childrenEl.appendChild(renderNode(c, onJump, depth + 1, expandDepth)));
+    node.children.forEach((c) => childrenEl.appendChild(renderNode(c, onJump, depth + 1, expandDepth, rules)));
     toggle.addEventListener('click', () => {
       const hidden = childrenEl.style.display === 'none';
       childrenEl.style.display = hidden ? '' : 'none';
       toggle.textContent = hidden ? '▾' : '▸';
     });
-    label.textContent = `${keyPart}${typeLabel(node)}`;
+    label.append(highlightLabel(`${keyPart}${typeLabel(node)}`, rules));
     el.append(toggle, label, childrenEl);
   } else {
-    label.textContent = `${keyPart}${node.value ?? typeLabel(node)}`;
+    label.append(highlightLabel(`${keyPart}${node.value ?? typeLabel(node)}`, rules));
     el.append(label);
   }
   return el;

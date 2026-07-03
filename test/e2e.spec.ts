@@ -408,6 +408,27 @@ test('트리를 연 채 붙여넣으면 트리가 새 내용으로 갱신된다'
   await expect(page.locator('#panel .tree-label', { hasText: 'beta' }).first()).toBeVisible();
 });
 
+test('트리 라벨에도 하이라이트 규칙이 적용된다', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'simpleparser.highlightRules',
+      JSON.stringify([{ id: '1', name: 'x', regex: 'stage', enabled: true, textColor: '#ff0000', bgColor: '#ffff00' }]),
+    );
+  });
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"stage":"MODE_A","ok":true}');
+  await clickBtn(page, '트리');
+  const mark = page.locator('#panel .tree-label span', { hasText: 'stage' }).first();
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveCSS('color', 'rgb(255, 0, 0)');
+  await expect(mark).toHaveCSS('background-color', 'rgb(255, 255, 0)');
+  // 규칙 편집(정규식 변경) → 트리 하이라이트 즉시 갱신
+  await clickBtn(page, '하이라이트');
+  await page.locator('#rules .rule-regex').first().fill('ok');
+  await expect(page.locator('#panel .tree-label span', { hasText: 'ok' }).first()).toBeVisible();
+});
+
 test('트리 뎁스: 기본은 최대뎁스 절반, +/-로 조절', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();

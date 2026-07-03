@@ -6,11 +6,9 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
-import { compileRules, findHighlights, type CompiledRule, type HighlightRule } from './matcher';
+import { compileRules, findHighlights, markStyle, type CompiledRule, type HighlightRule } from './matcher';
 
-export function markStyle(rule: { textColor: string; bgColor: string }): string {
-  return `color:${rule.textColor};background-color:${rule.bgColor}`;
-}
+export { markStyle }; // 기존 사용처 호환(원 정의는 matcher.ts — 트리 등 CM 밖에서도 사용)
 
 const setRulesEffect = StateEffect.define<CompiledRule[]>();
 
