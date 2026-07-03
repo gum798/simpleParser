@@ -11,7 +11,6 @@ import { mountRulesPanel, createRule } from './rulesPanel';
 import { loadRules, saveRules } from './highlight/store';
 import { mountContextHighlight, truncateLabel } from './contextHighlight';
 import { regexEscape } from './util/regexEscape';
-import { mountMenubar } from './menubar';
 import { loadTheme, saveTheme, applyTheme } from './theme';
 import { openThemePanel } from './themePanel';
 
@@ -50,6 +49,7 @@ export function saveMessage(copied: boolean): string {
 }
 
 export interface AppRoot {
+  header: HTMLElement;
   toolbar: HTMLElement;
   editorHost: HTMLElement;
   panel: HTMLElement;
@@ -65,54 +65,126 @@ export function mountApp(root: AppRoot): void {
   // 복원된 해시의 포맷은 명시적 선택으로 간주 → 자동 감지가 덮어쓰지 않음(스펙 §6)
   let manual = decoded !== null;
 
-  // 툴바 구성
-  const select = document.createElement('select');
-  select.id = 'format-select';
-  for (const f of FORMATS) {
-    const opt = document.createElement('option');
-    opt.value = f;
-    opt.textContent = f.toUpperCase();
-    if (f === currentFormat) opt.selected = true;
-    select.appendChild(opt);
-  }
-  // 정렬은 자주 쓰므로 메뉴 밖 독립 버튼(JSON 선택과 편집 메뉴 사이). markdown이면 비활성.
-  const formatBtn = button('정렬');
-  formatBtn.className = 'menu-btn';
-  formatBtn.addEventListener('click', () => runFormat());
-  root.toolbar.append(select, formatBtn);
-  // 관례적 순서(편집 → 보기)의 드롭다운 메뉴. 항목은 열릴 때마다 그려져 동적 라벨/비활성 반영.
-  mountMenubar(root.toolbar, [
-    {
-      title: '편집',
-      items: [
-        { label: '저장', run: () => void save() },
-        { label: '클린', run: doClean },
-      ],
-    },
-    {
-      title: '보기',
-      items: [
-        { label: () => viewLabel(currentFormat), run: toggleView },
-        { label: '하이라이트', run: toggleRules },
-        { label: '테마설정', run: openTheme },
-      ],
-    },
-  ]);
-
-  // 글래스 테마(투명도/흐림) 로드 후 CSS 변수에 반영
+  // ── 테마(다크 기본 + 라이트 토글, 유리 투명도/흐림) ──
   let theme = loadTheme();
   applyTheme(theme);
   // 적용은 실시간(가벼운 CSS 변수), 저장은 디바운스 → 슬라이더 드래그 중 localStorage 폭주 방지
   const persistTheme = debounce(() => saveTheme(theme), 400);
   function openTheme(): void {
     openThemePanel(theme, (t) => {
-      theme = t;
-      applyTheme(t);
+      theme = { ...t, mode: theme.mode }; // 팝오버는 alpha/blur만 다룸 — 모드는 헤더 토글 소관
+      applyTheme(theme);
       persistTheme();
     });
   }
 
-  const editor = createEditor(root.editorHost, { text: initial.d, fmt: currentFormat }, onChange);
+  // ── 헤더: 로고(좌) / 테마설정·다크토글·GitHub(우) ──
+  const brand = document.createElement('div');
+  brand.id = 'brand';
+  brand.innerHTML = 'simple<span>Parser</span>';
+  const headerActions = document.createElement('div');
+  headerActions.id = 'header-actions';
+  const settingsBtn = button('⚙');
+  settingsBtn.className = 'icon-btn';
+  settingsBtn.title = '테마설정';
+  settingsBtn.addEventListener('click', openTheme);
+  const modeBtn = button('');
+  modeBtn.className = 'icon-btn';
+  modeBtn.title = '라이트/다크 전환';
+  function refreshModeBtn(): void {
+    modeBtn.textContent = theme.mode === 'dark' ? '☀' : '☾';
+  }
+  modeBtn.addEventListener('click', () => {
+    theme = { ...theme, mode: theme.mode === 'dark' ? 'light' : 'dark' };
+    applyTheme(theme);
+    persistTheme();
+    editor.setDark(theme.mode === 'dark');
+    refreshModeBtn();
+  });
+  refreshModeBtn();
+  const ghLink = document.createElement('a');
+  ghLink.className = 'icon-btn';
+  ghLink.href = 'https://github.com/gum798/simpleParser';
+  ghLink.target = '_blank';
+  ghLink.rel = 'noreferrer';
+  ghLink.title = 'GitHub';
+  ghLink.textContent = '{ }';
+  headerActions.append(settingsBtn, modeBtn, ghLink);
+  root.header.append(brand, headerActions);
+
+  // ── 툴바: 포맷 세그먼트 컨트롤 + 항상 보이는 액션 버튼(스펙: 드롭다운에 숨기지 않기) ──
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  const segBtns = new Map<Format, HTMLButtonElement>();
+  for (const f of FORMATS) {
+    const b = button(f === 'markdown' ? 'MD' : f.toUpperCase());
+    b.className = 'seg-btn';
+    b.dataset.fmt = f;
+    b.addEventListener('click', () => {
+      manual = true;
+      currentFormat = f;
+      editor.setLanguage(f);
+      refreshToolbarForFormat();
+      persist();
+    });
+    segBtns.set(f, b);
+    seg.appendChild(b);
+  }
+  const formatBtn = button('정렬');
+  formatBtn.className = 'btn';
+  formatBtn.addEventListener('click', () => runFormat());
+  const copyBtn = button('복사');
+  copyBtn.className = 'btn';
+  copyBtn.addEventListener('click', () => {
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(editor.getValue());
+        copyBtn.textContent = '✓ 복사됨';
+        copyBtn.classList.add('ok');
+      } catch {
+        copyBtn.textContent = '복사 실패';
+      }
+      setTimeout(() => {
+        copyBtn.textContent = '복사';
+        copyBtn.classList.remove('ok');
+      }, 1500);
+    })();
+  });
+  const cleanBtn = button('클린');
+  cleanBtn.className = 'btn';
+  cleanBtn.addEventListener('click', doClean);
+  const viewBtn = button('');
+  viewBtn.className = 'btn';
+  viewBtn.addEventListener('click', toggleView);
+  const highlightBtn = button('하이라이트');
+  highlightBtn.className = 'btn';
+  highlightBtn.addEventListener('click', toggleRules);
+  const spacer = document.createElement('div');
+  spacer.className = 'spacer';
+  const saveBtn = button('저장');
+  saveBtn.className = 'btn primary';
+  saveBtn.addEventListener('click', () => void save());
+  root.toolbar.append(seg, formatBtn, copyBtn, cleanBtn, viewBtn, highlightBtn, spacer, saveBtn);
+
+  const editor = createEditor(
+    root.editorHost,
+    { text: initial.d, fmt: currentFormat, dark: theme.mode === 'dark' },
+    onChange,
+  );
+
+  // ── 패널 라벨(INPUT/OUTPUT 카드 헤더) + 입력창 호버 클리어 ──
+  const inputPane = root.editorHost.closest('.pane');
+  if (inputPane) {
+    inputPane.prepend(paneHead('INPUT'));
+    const floatClear = button('✕');
+    floatClear.className = 'pane-clear';
+    floatClear.title = '내용 지우기';
+    floatClear.addEventListener('click', doClean);
+    inputPane.appendChild(floatClear);
+  }
+  const panelBody = document.createElement('div');
+  panelBody.className = 'pane-body';
+  root.panel.append(paneHead('OUTPUT'), panelBody);
 
   // 패널 열림 상태(트리/미리보기, 하이라이트 규칙)는 URL로 저장/복원한다.
   let panelOpen = false;
@@ -207,7 +279,8 @@ export function mountApp(root: AppRoot): void {
 
   function refreshToolbarForFormat(): void {
     formatBtn.disabled = !canFormat(currentFormat); // markdown은 정렬 불가
-    select.value = currentFormat;
+    viewBtn.textContent = viewLabel(currentFormat); // 트리 ↔ 미리보기
+    for (const [f, b] of segBtns) b.classList.toggle('active', f === currentFormat);
   }
 
   // 현재 전체 상태(포맷·내용·규칙·패널 열림)를 한곳에서 만든다 — persist와 save가 공유.
@@ -237,14 +310,6 @@ export function mountApp(root: AppRoot): void {
     onEdit();
     persist();
   }
-
-  select.addEventListener('change', () => {
-    manual = true;
-    currentFormat = select.value as Format;
-    editor.setLanguage(currentFormat);
-    refreshToolbarForFormat();
-    persist();
-  });
 
   // safeOnly=true(자동/붙여넣기 경로)일 때는 '들여쓰기만 바뀌는 비파괴 정렬'만 적용한다.
   // 수동 [정렬] 버튼(safeOnly 없음)은 기존대로 로그 속 JSON 추출 등 적극적 정렬을 그대로 수행.
@@ -341,16 +406,16 @@ export function mountApp(root: AppRoot): void {
   }
 
   function openPanel(): void {
-    root.panel.innerHTML = '';
+    panelBody.innerHTML = '';
     if (currentFormat === 'markdown') {
       const { html } = renderMarkdown(editor.getValue());
       const view = document.createElement('div');
       view.className = 'markdown-body';
       view.innerHTML = html; // 정화 완료된 HTML
-      root.panel.appendChild(view);
+      panelBody.appendChild(view);
     } else {
       const { root: treeRoot, diagnostics } = buildTree(editor.getValue(), currentFormat);
-      if (treeRoot) root.panel.appendChild(renderTree(treeRoot, jumpTo));
+      if (treeRoot) panelBody.appendChild(renderTree(treeRoot, jumpTo));
       applyDiagnostics(diagnostics);
     }
     root.panel.hidden = false;
@@ -459,4 +524,15 @@ function button(label: string): HTMLButtonElement {
   b.textContent = label;
   b.type = 'button';
   return b;
+}
+
+/** 카드 상단의 작은 라벨 바(INPUT / OUTPUT). */
+function paneHead(label: string): HTMLElement {
+  const head = document.createElement('div');
+  head.className = 'pane-head';
+  const span = document.createElement('span');
+  span.className = 'pane-label';
+  span.textContent = label;
+  head.appendChild(span);
+  return head;
 }
