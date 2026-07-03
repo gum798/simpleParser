@@ -2,7 +2,7 @@ import type { Diagnostic, Format, State, TreeNode } from './types';
 import { detectFormat } from './detect';
 import { approxFind } from './treeJump';
 import { format } from './format/index';
-import { buildTree, renderTree } from './tree';
+import { buildTree, renderTree, maxDepth } from './tree';
 import { renderMarkdown } from './preview';
 import { encode, decode } from './urlState';
 import { createEditor } from './editor';
@@ -190,7 +190,31 @@ export function mountApp(root: AppRoot): void {
   }
   const panelBody = document.createElement('div');
   panelBody.className = 'pane-body';
-  root.panel.append(paneHead('OUTPUT'), panelBody);
+  // 트리 뎁스 컨트롤(OUTPUT 헤더): 기본값은 트리 분석 후 최대뎁스의 절반(내림, 최소 1)
+  let userDepth: number | null = null; // 사용자가 조절하면 유지, null이면 기본값 사용
+  const depthCtrl = document.createElement('span');
+  depthCtrl.className = 'depth-ctrl';
+  depthCtrl.hidden = true;
+  const depthLabel = document.createElement('span');
+  depthLabel.textContent = '뎁스';
+  const depthMinus = button('−');
+  depthMinus.className = 'depth-btn';
+  depthMinus.title = '한 단계 접기';
+  const depthVal = document.createElement('span');
+  depthVal.className = 'depth-val';
+  const depthPlus = button('+');
+  depthPlus.className = 'depth-btn';
+  depthPlus.title = '한 단계 펼치기';
+  function nudgeDepth(delta: number): void {
+    userDepth = Math.max(1, Number(depthVal.textContent || '1') + delta);
+    renderPanelContent();
+  }
+  depthMinus.addEventListener('click', () => nudgeDepth(-1));
+  depthPlus.addEventListener('click', () => nudgeDepth(1));
+  depthCtrl.append(depthLabel, depthMinus, depthVal, depthPlus);
+  const panelHead = paneHead('OUTPUT');
+  panelHead.appendChild(depthCtrl);
+  root.panel.append(panelHead, panelBody);
 
   // 패널 열림 상태(트리/미리보기, 하이라이트 규칙)는 URL로 저장/복원한다.
   let panelOpen = false;
@@ -417,6 +441,7 @@ export function mountApp(root: AppRoot): void {
     const scrollTop = panelBody.scrollTop; // 재렌더 시 보던 위치 유지
     panelBody.innerHTML = '';
     if (currentFormat === 'markdown') {
+      depthCtrl.hidden = true;
       const { html } = renderMarkdown(editor.getValue());
       const view = document.createElement('div');
       view.className = 'markdown-body';
@@ -424,7 +449,16 @@ export function mountApp(root: AppRoot): void {
       panelBody.appendChild(view);
     } else {
       const { root: treeRoot, diagnostics } = buildTree(editor.getValue(), currentFormat);
-      if (treeRoot) panelBody.appendChild(renderTree(treeRoot, jumpTo));
+      if (treeRoot) {
+        // 기본 뎁스 = 최대뎁스 절반(내림, 최소 1). 사용자가 조절했으면 그 값을 범위 안에서 유지.
+        const md = Math.max(1, maxDepth(treeRoot));
+        const d = Math.min(Math.max(userDepth ?? Math.max(1, Math.floor(md / 2)), 1), md);
+        depthVal.textContent = String(d);
+        depthCtrl.hidden = false;
+        panelBody.appendChild(renderTree(treeRoot, jumpTo, d));
+      } else {
+        depthCtrl.hidden = true;
+      }
       applyDiagnostics(diagnostics);
     }
     panelBody.scrollTop = scrollTop;

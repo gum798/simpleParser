@@ -408,6 +408,26 @@ test('트리를 연 채 붙여넣으면 트리가 새 내용으로 갱신된다'
   await expect(page.locator('#panel .tree-label', { hasText: 'beta' }).first()).toBeVisible();
 });
 
+test('트리 뎁스: 기본은 최대뎁스 절반, +/-로 조절', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  // 깊이 4 JSON → 기본 뎁스 = floor(4/2) = 2 → 깊이 2(b)의 자식(c)은 접혀서 안 보임
+  await page.keyboard.type('{"a":{"b":{"c":{"d":1}}}}');
+  await clickBtn(page, '트리');
+  await expect(page.locator('#panel .depth-val')).toHaveText('2');
+  await expect(page.locator('#panel .tree-label', { hasText: 'b' }).first()).toBeVisible();
+  await expect(page.locator('#panel .tree-label', { hasText: 'c' }).first()).toBeHidden();
+  // + 한 단계 → c 보임
+  await page.locator('#panel .depth-btn', { hasText: '+' }).click();
+  await expect(page.locator('#panel .depth-val')).toHaveText('3');
+  await expect(page.locator('#panel .tree-label', { hasText: 'c' }).first()).toBeVisible();
+  // − 두 단계 → 1 → a만 보이고 b는 접힘
+  await page.locator('#panel .depth-btn', { hasText: '−' }).click();
+  await page.locator('#panel .depth-btn', { hasText: '−' }).click();
+  await expect(page.locator('#panel .depth-val')).toHaveText('1');
+  await expect(page.locator('#panel .tree-label', { hasText: 'b' }).first()).toBeHidden();
+});
+
 test('트리 패널 열림 상태가 URL에 저장되어 새로고침 후에도 유지', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();
