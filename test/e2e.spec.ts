@@ -171,6 +171,20 @@ test('하이라이트 패널을 열면 바로 입력 가능한 규칙 줄이 보
   await expect(page.locator('#rules .rule-regex')).toBeVisible();
 });
 
+test('하이라이트 카드는 바닥 줄부터 채워진다(남는 카드는 윗줄)', async ({ page }) => {
+  const rules = ['a1', 'b2', 'c3', 'd4', 'e5', 'f6', 'g7'].map((n, i) => ({
+    id: String(i), name: n, regex: n, enabled: true, textColor: '#000000', bgColor: '#ffff00',
+  }));
+  await page.addInitScript((r) => localStorage.setItem('simpleparser.highlightRules', JSON.stringify(r)), rules);
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.goto('/');
+  await clickBtn(page, '하이라이트');
+  // 첫 카드는 바닥 줄, 마지막 카드는 그 위 줄(wrap-reverse)
+  const first = (await page.locator('#rules .rule-row').first().boundingBox())!;
+  const last = (await page.locator('#rules .rule-row').last().boundingBox())!;
+  expect(last.y).toBeLessThan(first.y);
+});
+
 test('규칙창을 오른쪽으로 도킹할 수 있고 새로고침 후에도 유지된다', async ({ page }) => {
   await page.goto('/');
   await clickBtn(page, '하이라이트');

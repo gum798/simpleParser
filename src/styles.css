@@ -157,17 +157,19 @@ body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px)
   display: flex; flex-direction: column; gap: 8px; }
 /* id 선택자의 display가 [hidden]을 이기므로 명시적으로 숨김(오버레이가 항상 떠 있지 않게) */
 #rules[hidden] { display: none; }
-/* 오른쪽 도킹: 세로 사이드 패널(규칙 카드 1열). 카드는 아래부터 채움(빈 공간은 위쪽) */
+/* 오른쪽 도킹: 세로 사이드 패널(규칙 카드 1열) */
 #rules.dock-right { top: 88px; bottom: 40px; left: auto; right: 12px; width: min(340px, 85vw); max-height: none; }
-#rules.dock-right .rules-grid { grid-template-columns: 1fr; flex: 1; align-content: end; }
+#rules.dock-right .rules-grid { flex: 1; }
+#rules.dock-right .rule-row { flex-basis: 100%; max-width: none; }
 .rules-header { display: flex; justify-content: flex-end; }
 .rules-dock { font: inherit; font-size: 11.5px; padding: 2px 10px; border-radius: 7px; cursor: pointer;
   border: 1px solid var(--border); background: var(--card); color: var(--muted); }
 .rules-dock:hover { color: var(--text); }
-.rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px; align-content: start; }
-/* 규칙 = 카드: 위(체크·정규식·삭제) / 아래(이름·글자색·배경색) */
+/* 카드는 아래부터 채움: wrap-reverse로 첫 줄이 바닥, 남는 카드가 윗줄로(grid는 불가) */
+.rules-grid { display: flex; flex-wrap: wrap-reverse; align-content: flex-start; gap: 8px; }
+/* 규칙 = 카드: 위(체크·정규식·삭제) / 아래(이름·글자색·배경색). 폭은 flex(min~max)로 반응 */
 .rule-row { display: grid; gap: 4px 6px; align-items: center;
+  flex: 1 1 200px; min-width: 180px; max-width: 340px; box-sizing: border-box;
   grid-template-columns: auto 1fr auto auto;
   grid-template-areas: "en regex regex del" "name name text bg";
   border: 1px solid var(--border); border-radius: 10px; padding: 8px;
@@ -187,7 +189,7 @@ body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px)
   border-radius: 6px; background: none; }
 .rule-del { background: none; border: none; cursor: pointer; justify-self: end; color: var(--muted); }
 .rule-del:hover { color: var(--text); }
-.rule-add { grid-column: 1 / -1; justify-self: start; font: inherit; font-size: 12.5px; padding: 4px 12px;
+.rule-add { flex: 0 0 auto; align-self: center; font: inherit; font-size: 12.5px; padding: 4px 12px;
   border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
   background: var(--card); color: var(--text); }
 .rule-add:hover { background: var(--hover); }
@@ -212,7 +214,8 @@ body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px)
   #toolbar { padding: 6px 10px; }
   /* 좁은 화면에선 오른쪽 도킹을 하단 도킹처럼 되돌림(에디터 폭 붕괴 방지, 리뷰 반영) */
   #rules.dock-right { left: 12px; right: 12px; top: auto; bottom: 40px; width: auto; max-height: 45vh; }
-  #rules.dock-right .rules-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  #rules.dock-right .rules-grid { flex: none; }
+  #rules.dock-right .rule-row { flex-basis: 200px; max-width: 340px; }
   body.rules-open.rules-right #content { padding-right: 10px; }
   body.rules-open.rules-right .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
 }
