@@ -15,6 +15,7 @@
   --hover: rgba(255, 255, 255, 0.06);
   --accent: #6366f1; /* 인디고 — 활성/프라이머리에만 절제해 사용 */
   --accent-weak: rgba(99, 102, 241, 0.16);
+  --accent-strong: #a5b4fc; /* 활성 탭 텍스트 — 어두운 배경 대비 확보(WCAG AA) */
   --ok: #34d399;
   /* 떠 있는 유리 요소(규칙창·팝오버·팔레트)에만 쓰는 변수 — 테마설정 슬라이더가 실시간 변경 */
   --glass-alpha: 0.2;
@@ -31,6 +32,7 @@
   --text: #18181b;
   --muted: #71717a;
   --hover: rgba(0, 0, 0, 0.05);
+  --accent-strong: #4338ca; /* 밝은 배경 대비 확보 */
   --glass-rgb: 255, 255, 255;
   --edge-rgb: 0, 0, 0;
 }
@@ -57,7 +59,7 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
 .seg-btn { font: inherit; font-size: 12px; font-weight: 500; padding: 4px 10px; border: none;
   background: none; color: var(--muted); cursor: pointer; }
 .seg-btn:hover { color: var(--text); }
-.seg-btn.active { background: var(--accent-weak); color: var(--accent); }
+.seg-btn.active { background: var(--accent-weak); color: var(--accent-strong); }
 .btn { font: inherit; font-size: 12.5px; font-weight: 500; padding: 4px 11px; border-radius: 8px;
   cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text); }
 .btn:hover:not(:disabled) { background: var(--hover); }
@@ -77,12 +79,13 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
   border-bottom: 1px solid var(--border); }
 .pane-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; color: var(--muted); }
 .pane-body { flex: 1; overflow: auto; padding: 8px; }
-/* 입력 카드 호버 시 나타나는 플로팅 클리어 */
-.pane-clear { position: absolute; top: 34px; right: 10px; z-index: 10; width: 24px; height: 24px;
-  border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--muted);
-  font: inherit; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+/* 입력 카드 헤더 우측의 클리어 ✕ — 본문 텍스트 위에 겹치지 않고, 터치에서도 안전(리뷰 반영) */
+.pane-clear { margin-left: auto; width: 20px; height: 20px; display: inline-flex;
+  align-items: center; justify-content: center; border-radius: 5px; border: none; background: none;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; opacity: 0.55;
+  transition: opacity 0.15s; }
 #input-pane:hover .pane-clear, .pane-clear:focus-visible { opacity: 1; }
-.pane-clear:hover { color: var(--text); background: var(--hover); }
+.pane-clear:hover { background: var(--hover); color: var(--text); }
 
 /* ── 에디터 ── */
 #editor { flex: 1; overflow: auto; min-width: 0; }
@@ -92,7 +95,8 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
 /* 하이라이트 오버레이가 열리면 도킹 방향으로 여백을 줘 가려지는 내용을 오버레이 밖으로 스크롤 */
 body.rules-open:not(.rules-right) .cm-content,
 body.rules-open:not(.rules-right) #panel .pane-body { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
-body.rules-open.rules-right .cm-content { padding-right: calc(var(--rules-w, 340px) + 24px); }
+/* 오른쪽 도킹: 두 카드(INPUT/OUTPUT) 전체를 오버레이 왼쪽으로 밀어 아무것도 안 가리게(리뷰 반영) */
+body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px) + 12px); }
 
 /* ── 트리/미리보기 ── */
 .tree { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; }
@@ -204,4 +208,9 @@ body.rules-open.rules-right .cm-content { padding-right: calc(var(--rules-w, 340
   #content { flex-direction: column; }
   #panel { width: auto; max-width: none; max-height: 45vh; }
   #toolbar { padding: 6px 10px; }
+  /* 좁은 화면에선 오른쪽 도킹을 하단 도킹처럼 되돌림(에디터 폭 붕괴 방지, 리뷰 반영) */
+  #rules.dock-right { left: 12px; right: 12px; top: auto; bottom: 40px; width: auto; max-height: 45vh; }
+  #rules.dock-right .rules-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  body.rules-open.rules-right #content { padding-right: 10px; }
+  body.rules-open.rules-right .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
 }

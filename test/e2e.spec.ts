@@ -179,9 +179,9 @@ test('규칙창을 오른쪽으로 도킹할 수 있고 새로고침 후에도 �
   const vw = page.viewportSize()!.width;
   const box = await page.locator('#rules').boundingBox();
   expect(box!.x).toBeGreaterThan(vw / 2);
-  // 에디터에 오른쪽 여백이 생겨 긴 줄도 패널 밖으로 스크롤 가능
+  // 콘텐츠 전체가 왼쪽으로 밀려 아무것도 안 가려짐(#content 오른쪽 여백)
   const padR = await page
-    .locator('.cm-content')
+    .locator('#content')
     .evaluate((el) => parseFloat(getComputedStyle(el).paddingRight));
   expect(padR).toBeGreaterThan(100);
   // 도킹 선택은 localStorage에 저장 → 새로고침 후 유지
@@ -193,6 +193,20 @@ test('규칙창을 오른쪽으로 도킹할 수 있고 새로고침 후에도 �
   await page.locator('#rules .rules-dock').click();
   const box3 = await page.locator('#rules').boundingBox();
   expect(box3!.x).toBeLessThan(vw / 2);
+});
+
+test('오른쪽 도킹 + 트리 동시 열림: OUTPUT 패널이 규칙창에 가려지지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1,"b":2}');
+  await clickBtn(page, '트리');
+  await clickBtn(page, '하이라이트');
+  await page.locator('#rules .rules-dock').click();
+  // OUTPUT 카드 오른쪽 끝이 규칙 오버레이 왼쪽 경계보다 왼쪽에 있어야 함(겹침 없음)
+  const panel = (await page.locator('#panel').boundingBox())!;
+  const rules = (await page.locator('#rules').boundingBox())!;
+  expect(panel.x + panel.width).toBeLessThanOrEqual(rules.x + 1);
 });
 
 test('하이라이트 규칙 추가 → 매칭 텍스트 강조 + 새로고침 유지', async ({ page }) => {

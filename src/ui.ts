@@ -71,11 +71,15 @@ export function mountApp(root: AppRoot): void {
   // 적용은 실시간(가벼운 CSS 변수), 저장은 디바운스 → 슬라이더 드래그 중 localStorage 폭주 방지
   const persistTheme = debounce(() => saveTheme(theme), 400);
   function openTheme(): void {
-    openThemePanel(theme, (t) => {
-      theme = { ...t, mode: theme.mode }; // 팝오버는 alpha/blur만 다룸 — 모드는 헤더 토글 소관
-      applyTheme(theme);
-      persistTheme();
-    });
+    openThemePanel(
+      theme,
+      (t) => {
+        theme = { ...t, mode: theme.mode }; // 팝오버는 alpha/blur만 다룸 — 모드는 헤더 토글 소관
+        applyTheme(theme);
+        persistTheme();
+      },
+      settingsBtn, // ⚙ 재클릭이 '닫힘'으로 동작하도록 앵커 전달
+    );
   }
 
   // ── 헤더: 로고(좌) / 테마설정·다크토글·GitHub(우) ──
@@ -97,7 +101,7 @@ export function mountApp(root: AppRoot): void {
   modeBtn.addEventListener('click', () => {
     theme = { ...theme, mode: theme.mode === 'dark' ? 'light' : 'dark' };
     applyTheme(theme);
-    persistTheme();
+    saveTheme(theme); // 모드 토글은 단발 클릭 → 즉시 저장(디바운스 대기 중 새로고침해도 유지)
     editor.setDark(theme.mode === 'dark');
     refreshModeBtn();
   });
@@ -175,12 +179,14 @@ export function mountApp(root: AppRoot): void {
   // ── 패널 라벨(INPUT/OUTPUT 카드 헤더) + 입력창 호버 클리어 ──
   const inputPane = root.editorHost.closest('.pane');
   if (inputPane) {
-    inputPane.prepend(paneHead('INPUT'));
-    const floatClear = button('✕');
-    floatClear.className = 'pane-clear';
-    floatClear.title = '내용 지우기';
-    floatClear.addEventListener('click', doClean);
-    inputPane.appendChild(floatClear);
+    const head = paneHead('INPUT');
+    // ✕는 헤더 우측에 — 본문 텍스트 위에 겹치지 않고 터치 기기에서도 오클릭 삭제가 없다(리뷰 반영)
+    const clearBtn = button('✕');
+    clearBtn.className = 'pane-clear';
+    clearBtn.title = '내용 지우기';
+    clearBtn.addEventListener('click', doClean);
+    head.appendChild(clearBtn);
+    inputPane.prepend(head);
   }
   const panelBody = document.createElement('div');
   panelBody.className = 'pane-body';
