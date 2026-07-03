@@ -361,6 +361,39 @@ test('트리 노드 클릭 → 에디터가 해당 위치를 선택', async ({ p
   await expect(page.locator('.cm-editor .cm-selectionBackground').first()).toBeVisible();
 });
 
+test('트리를 연 채 편집해도 노드 클릭이 정확한 위치를 선택한다(낡은 오프셋 방지)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"alpha":111,"beta":222}');
+  await clickFormat(page);
+  await clickBtn(page, '트리');
+  // 트리를 연 채 문서 맨 앞에 공백 삽입 → 오프셋이 밀림 → 재렌더로 보정돼야 함
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  await page.keyboard.type('   ');
+  await page.waitForTimeout(500); // onEdit 디바운스(300ms) + 재렌더
+  await page.locator('#panel .tree-label', { hasText: 'beta' }).first().click();
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  expect(selected).toBe('222'); // 밀린 위치가 아니라 실제 beta 값
+});
+
+test('트리를 연 채 붙여넣으면 트리가 새 내용으로 갱신된다', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"x":1}');
+  await clickBtn(page, '트리');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '{"alpha":111,"beta":222}');
+    document.querySelector('.cm-content')!.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+  });
+  await expect(page.locator('#panel .tree-label', { hasText: 'beta' }).first()).toBeVisible();
+});
+
 test('트리 패널 열림 상태가 URL에 저장되어 새로고침 후에도 유지', async ({ page }) => {
   await page.goto('/');
   await page.locator('.cm-content').click();
