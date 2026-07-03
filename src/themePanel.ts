@@ -1,15 +1,20 @@
 import { type Theme, ALPHA_MIN, ALPHA_MAX, BLUR_MIN, BLUR_MAX } from './theme';
 
 let popover: HTMLElement | null = null;
+let anchorEl: HTMLElement | null = null;
 
 function close(): void {
   popover?.remove();
   popover = null;
+  anchorEl = null;
   document.removeEventListener('mousedown', onDocDown, true);
   document.removeEventListener('keydown', onKey, true);
 }
 function onDocDown(e: MouseEvent): void {
-  if (popover && e.target instanceof Node && !popover.contains(e.target)) close();
+  if (!popover || !(e.target instanceof Node)) return;
+  // 앵커(⚙) 클릭은 여기서 닫지 않는다 → click 단계의 openThemePanel이 토글로 닫게 함
+  if (anchorEl && anchorEl.contains(e.target)) return;
+  if (!popover.contains(e.target)) close();
 }
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') close();
@@ -19,11 +24,12 @@ function onKey(e: KeyboardEvent): void {
  * 테마설정 팝오버를 연다(토글). 비모달 → 뒤 패널의 투명도 변화가 실시간으로 보인다.
  * 슬라이더를 움직이면 onChange(새 테마)를 호출한다(적용/저장은 호출측 책임).
  */
-export function openThemePanel(theme: Theme, onChange: (t: Theme) => void): void {
+export function openThemePanel(theme: Theme, onChange: (t: Theme) => void, anchor?: HTMLElement): void {
   if (popover) {
     close();
     return;
   }
+  anchorEl = anchor ?? null;
   let cur: Theme = { ...theme };
   popover = document.createElement('div');
   popover.className = 'theme-panel';

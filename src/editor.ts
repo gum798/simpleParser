@@ -1,5 +1,6 @@
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, Compartment } from '@codemirror/state';
+import { oneDark } from '@codemirror/theme-one-dark';
 import { linter, lintGutter, forceLinting, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
 import { json } from '@codemirror/lang-json';
 import { html } from '@codemirror/lang-html';
@@ -41,6 +42,7 @@ export interface Editor {
   scrollToTop(): void;
   setValue(s: string): void;
   setLanguage(fmt: Format): void;
+  setDark(dark: boolean): void;
   setDiagnostics(d: Diagnostic[]): void;
   setHighlightRules(rules: HighlightRule[]): void;
   revealRange(from: number, to: number): void;
@@ -48,10 +50,11 @@ export interface Editor {
 
 export function createEditor(
   parent: HTMLElement,
-  initial: { text: string; fmt: Format },
+  initial: { text: string; fmt: Format; dark?: boolean },
   onChange: () => void,
 ): Editor {
   const language = new Compartment();
+  const darkTheme = new Compartment(); // 다크 모드 토글 시 구문 색상 테마 교체
   let diagnostics: Diagnostic[] = [];
 
   const view = new EditorView({
@@ -61,6 +64,7 @@ export function createEditor(
       extensions: [
         basicSetup,
         language.of(langFor[initial.fmt]()),
+        darkTheme.of(initial.dark ? oneDark : []),
         lintGutter(),
         highlightExtension,
         linter((v) => toCmDiagnostics(v.state.doc.toString(), diagnostics)),
@@ -84,6 +88,7 @@ export function createEditor(
     setValue: (s) =>
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: s } }),
     setLanguage: (fmt) => view.dispatch({ effects: language.reconfigure(langFor[fmt]()) }),
+    setDark: (dark) => view.dispatch({ effects: darkTheme.reconfigure(dark ? oneDark : []) }),
     setDiagnostics: (d) => {
       diagnostics = d;
       forceLinting(view);
