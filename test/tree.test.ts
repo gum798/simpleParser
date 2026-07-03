@@ -95,3 +95,26 @@ test('트리 라벨 클릭 시 onJump(node) 호출', () => {
   (el.querySelector('.tree-label') as HTMLElement).click();
   expect(calls.length).toBeGreaterThan(0);
 });
+
+test('maxDepth: 루트=0, 자식 단계마다 +1', async () => {
+  const { maxDepth, buildTree } = await import('../src/tree');
+  expect(maxDepth({ type: 'scalar', value: '1' })).toBe(0);
+  const flat = buildTree('{"a":1,"b":2}', 'json').root!;
+  expect(maxDepth(flat)).toBe(1);
+  const deep = buildTree('{"a":{"b":{"c":{"d":1}}}}', 'json').root!;
+  expect(maxDepth(deep)).toBe(4);
+});
+
+test('renderTree(expandDepth): 지정 깊이부터 접힌 채 렌더', async () => {
+  const { renderTree, buildTree } = await import('../src/tree');
+  const root = buildTree('{"a":{"b":{"c":1}}}', 'json').root!;
+  const el = renderTree(root, () => {}, 1); // 루트만 펼침 → a(깊이1)는 접힘
+  const nodes = el.querySelectorAll('.tree-children');
+  // 루트의 children은 보임, a의 children은 숨김
+  expect((nodes[0] as HTMLElement).style.display).toBe('');
+  expect((nodes[1] as HTMLElement).style.display).toBe('none');
+  // 접힌 노드 토글은 ▸ 표시
+  const toggles = el.querySelectorAll('.tree-toggle');
+  expect(toggles[0].textContent).toBe('▾');
+  expect(toggles[1].textContent).toBe('▸');
+});

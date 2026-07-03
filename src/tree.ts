@@ -175,14 +175,35 @@ function elementToNode(el: Element): TreeNode {
   };
 }
 
-export function renderTree(root: TreeNode, onJump: (node: TreeNode) => void): HTMLElement {
+/** 트리의 최대 깊이(루트=0, 자식 한 단계마다 +1). */
+export function maxDepth(node: TreeNode): number {
+  if (!node.children || node.children.length === 0) return 0;
+  let deepest = 0;
+  for (const c of node.children) deepest = Math.max(deepest, maxDepth(c));
+  return deepest + 1;
+}
+
+/**
+ * expandDepth = 자식을 펼쳐 보여줄 단계 수. 깊이 expandDepth 이상인 노드는 접힌 채 시작
+ * (수동 토글로 열 수 있음). 생략하면 전부 펼침.
+ */
+export function renderTree(
+  root: TreeNode,
+  onJump: (node: TreeNode) => void,
+  expandDepth = Infinity,
+): HTMLElement {
   const container = document.createElement('div');
   container.className = 'tree';
-  container.appendChild(renderNode(root, onJump));
+  container.appendChild(renderNode(root, onJump, 0, expandDepth));
   return container;
 }
 
-function renderNode(node: TreeNode, onJump: (node: TreeNode) => void): HTMLElement {
+function renderNode(
+  node: TreeNode,
+  onJump: (node: TreeNode) => void,
+  depth: number,
+  expandDepth: number,
+): HTMLElement {
   const el = document.createElement('div');
   el.className = 'tree-node' + (node.partial ? ' partial' : '');
   const keyPart = node.key !== undefined ? `${node.key}: ` : '';
@@ -191,12 +212,14 @@ function renderNode(node: TreeNode, onJump: (node: TreeNode) => void): HTMLEleme
   label.addEventListener('click', () => onJump(node));
 
   if (node.children && node.children.length) {
+    const collapsed = depth >= expandDepth; // 뎁스 컨트롤: 이 깊이부터 접힘
     const toggle = document.createElement('button');
     toggle.className = 'tree-toggle';
-    toggle.textContent = '▾';
+    toggle.textContent = collapsed ? '▸' : '▾';
     const childrenEl = document.createElement('div');
     childrenEl.className = 'tree-children';
-    node.children.forEach((c) => childrenEl.appendChild(renderNode(c, onJump)));
+    if (collapsed) childrenEl.style.display = 'none';
+    node.children.forEach((c) => childrenEl.appendChild(renderNode(c, onJump, depth + 1, expandDepth)));
     toggle.addEventListener('click', () => {
       const hidden = childrenEl.style.display === 'none';
       childrenEl.style.display = hidden ? '' : 'none';
