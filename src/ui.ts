@@ -310,6 +310,8 @@ export function mountApp(root: AppRoot): void {
     }
     // 타이핑 중에도 진단을 재계산해 인라인 밑줄/상태줄이 오래된 채로 남지 않게 함
     applyDiagnostics(format(editor.getValue(), currentFormat).diagnostics);
+    // 출력 패널이 열려 있으면 함께 갱신 — 낡은 트리 오프셋으로 잘못된 위치를 선택하는 것 방지
+    if (!root.panel.hidden) renderPanelContent();
   }, 300);
 
   function onChange(): void {
@@ -411,7 +413,8 @@ export function mountApp(root: AppRoot): void {
     if (r) editor.revealRange(r.from, r.to);
   }
 
-  function openPanel(): void {
+  function renderPanelContent(): void {
+    const scrollTop = panelBody.scrollTop; // 재렌더 시 보던 위치 유지
     panelBody.innerHTML = '';
     if (currentFormat === 'markdown') {
       const { html } = renderMarkdown(editor.getValue());
@@ -424,6 +427,11 @@ export function mountApp(root: AppRoot): void {
       if (treeRoot) panelBody.appendChild(renderTree(treeRoot, jumpTo));
       applyDiagnostics(diagnostics);
     }
+    panelBody.scrollTop = scrollTop;
+  }
+
+  function openPanel(): void {
+    renderPanelContent();
     root.panel.hidden = false;
     panelOpen = true;
   }
