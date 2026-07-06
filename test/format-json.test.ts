@@ -79,6 +79,37 @@ test('미닫힘 괄호가 많은 입력도 O(n)으로 빈 결과', () => {
   expect(extractJsonBlocks('{a '.repeat(5000))).toEqual([]);
 });
 
+test('문자열 안 raw 줄바꿈(터미널 랩 복사) 복구: 전체가 JSON', () => {
+  const r = formatJson('{"a":"과제내용\n1","id":"ab\n-cd"}');
+  expect(r.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+  expect(r.output).toContain('"과제내용1"');
+  expect(r.output).toContain('"ab-cd"');
+  expect(r.faithful).toBe(false); // 내용을 고친 복구 → 자동 정렬 보류
+});
+
+test('문자열 안 raw 줄바꿈 복구: 로그 접두어 뒤 JSON도 통째로 추출', () => {
+  const log = 'request_body path=/x body=\n{"runId":"r1","msg":"지표를\n실시간으로 수집"}';
+  const r = formatJson(log);
+  expect(r.output).toContain('"runId": "r1"');
+  expect(r.output).toContain('"지표를실시간으로 수집"');
+  expect(r.faithful).toBe(false);
+});
+
+test('이스케이프 중간에 낀 랩(역슬래시 뒤 줄바꿈)도 복구', () => {
+  const r = formatJson('{"s":"a\\' + '\n' + 'n b"}'); // 원본 "a\n b"가 \와 n 사이에서 랩된 경우
+  expect(r.output).toContain('"a\\n b"');
+});
+
+test('extractJsonBlocks: 문자열 안 줄바꿈이 낀 블록도 복구해 통째로 반환', () => {
+  expect(extractJsonBlocks('x {"a":"b\nc"} y')).toEqual(['{"a":"bc"}']);
+});
+
+test('문자열 밖 줄바꿈(정상 pretty-print)은 복구 대상 아님 — 기존 동작 유지', () => {
+  const r = formatJson('{\n  "a": 1\n}');
+  expect(r.faithful).toBe(true);
+  expect(r.output).toBe('{\n  "a": 1\n}');
+});
+
 test('깨진 단일 JSON 문서는 추출이 아니라 관용 복구', () => {
   const r = formatJson('{\n  "a": 1\n  "b": 2\n}'); // 콤마 누락 → 복구 + 진단
   expect(r.diagnostics.length).toBeGreaterThan(0);

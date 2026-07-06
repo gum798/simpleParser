@@ -63,6 +63,36 @@ test('로그 추출 JSON도 절대 오프셋 pos', () => {
   expect(text.slice(r.root!.pos!.from, r.root!.pos!.to)).toBe('{"x":1}');
 });
 
+test('문자열 안 줄바꿈(터미널 랩)이 낀 로그 JSON도 온전한 트리 + 보정된 원본 pos', () => {
+  const text = 'body=\n{"a":"x\ny","b":[1,2]}';
+  const r = buildTree(text, 'json');
+  expect(r.root?.type).toBe('object');
+  expect(r.root?.children?.map((c) => c.key)).toEqual(['a', 'b']);
+  const a = r.root?.children?.find((c) => c.key === 'a')!;
+  expect(a.value).toBe('xy'); // 랩 줄바꿈 제거로 복원된 값
+  const b = r.root?.children?.find((c) => c.key === 'b')!;
+  expect(text.slice(b.pos!.from, b.pos!.to)).toBe('[1,2]'); // 제거분을 보정한 원본 오프셋
+});
+
+test('전체가 랩된 JSON(접두어 없음)도 복구 트리 + partial 표시', () => {
+  const text = '{"key":"ab\ncd","n":1}';
+  const r = buildTree(text, 'json');
+  expect(r.root?.type).toBe('object');
+  expect(r.root?.partial).toBe(true); // 내용을 고친 복구임을 표시
+  const k = r.root?.children?.find((c) => c.key === 'key')!;
+  expect(k.value).toBe('abcd');
+  const n = r.root?.children?.find((c) => c.key === 'n')!;
+  expect(text.slice(n.pos!.from, n.pos!.to)).toBe('1');
+});
+
+test('괄호 없는 최상위 문자열 스칼라의 랩 줄바꿈도 트리에서 복구(포맷 경로와 동일 라우팅)', () => {
+  const r = buildTree('"line1\nline2"', 'json'); // topLevelSpans가 0개여도 복구 경로를 타야 함
+  expect(r.root?.type).toBe('scalar');
+  expect(r.root?.value).toBe('line1line2');
+  expect(r.root?.partial).toBe(true);
+  expect(r.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+});
+
 test('YAML 트리 노드는 정확한 소스 pos를 가진다', () => {
   const text = 'a: 1\nb: two';
   const r = buildTree(text, 'yaml');
