@@ -50,22 +50,32 @@ export function parseJsonTolerant(text: string): { value: unknown; diagnostics: 
 
 export type JsonResolution =
   | { kind: 'value'; value: unknown } // 전체가 유효한 단일 JSON
+  | { kind: 'repaired'; value: unknown; removedNewlines: number } // 문자열 안 랩 줄바꿈 제거로 복구된 단일 JSON
   | { kind: 'blocks'; values: unknown[] } // 텍스트에서 추출한 JSON 블록들
   | { kind: 'tolerant'; value: unknown; diagnostics: Diagnostic[] }; // 깨진 단일 문서의 관용 복구
 
 /**
  * 입력을 JSON으로 해석한다(formatJson 전용).
  * 주의: buildTree(tree.ts)는 노드 위치(pos) 캡처를 위해 parseTree 기반으로 같은 라우팅
- * (validWhole / isWholeSingleSpan)을 별도로 재현한다 — 한쪽 휴리스틱을 바꾸면 다른 쪽도 맞출 것.
+ * (validWhole / isWholeSingleSpan / 랩 줄바꿈 복구)을 별도로 재현한다 — 한쪽 휴리스틱을 바꾸면 다른 쪽도 맞출 것.
  * 1) 전체가 유효 JSON → value
- * 2) 주변 텍스트가 있는 경우(로그 등)만 박힌 블록 추출 → blocks
- * 3) 그 외(전체가 하나의 깨진 괄호 구조 등) → 관용 복구 + 진단
+ * 2) 문자열 안 랩 줄바꿈만 제거하면 유효해지는 경우 → repaired
+ * 3) 주변 텍스트가 있는 경우(로그 등)만 박힌 블록 추출 → blocks
+ * 4) 그 외(전체가 하나의 깨진 괄호 구조 등) → 관용 복구 + 진단
  */
 export function resolveJson(text: string): JsonResolution {
   try {
     return { kind: 'value', value: JSON.parse(text) };
   } catch {
-    /* 단일 문서가 아님 → 추출/복구 판단 */
+    /* 단일 문서가 아님 → 복구/추출 판단 */
+  }
+  const rep = repairJsonStringNewlines(text);
+  if (rep.removed.length > 0) {
+    try {
+      return { kind: 'repaired', value: JSON.parse(rep.text), removedNewlines: rep.removed.length };
+    } catch {
+      /* 랩 복구로도 안 됨 → 추출/관용 복구로 */
+    }
   }
   const spans = topLevelSpans(text);
   // 전체가 (주변 공백 외엔) 하나의 괄호 구조면 '깨진 단일 문서'로 보고 추출하지 않는다.
@@ -91,6 +101,19 @@ export function formatJson(text: string): FormatResult {
     // 단 중복 키는 JSON.parse가 마지막 값만 남겨 데이터가 사라지므로 자동 정렬 보류(faithful=false).
     return { output: JSON.stringify(r.value, null, 2), diagnostics: [], faithful: !hasDuplicateKeys(text) };
   }
+  if (r.kind === 'repaired') {
+    // 문자열 내용을 고친 복구 → 자동 정렬 보류 + 경고로 알림
+    return {
+      output: JSON.stringify(r.value, null, 2),
+      diagnostics: [
+        {
+          message: `문자열 안의 줄바꿈 ${r.removedNewlines}개를 제거해 복구했습니다(터미널 랩 복사 추정)`,
+          severity: 'warning',
+        },
+      ],
+      faithful: false,
+    };
+  }
   if (r.kind === 'blocks') {
     // 로그 등에서 추출 → 주변 텍스트를 버리므로 자동 정렬엔 부적합(수동 [정렬] 전용)
     return {
@@ -104,20 +127,75 @@ export function formatJson(text: string): FormatResult {
 }
 
 /**
- * 텍스트에서 유효한 JSON 객체/배열 블록을 모두 추출한다(O(n) 단일 패스).
- * 문자열·이스케이프를 인식하고, 균형은 맞지만 JSON이 아닌 구간은 내부를 다시 훑어
- * 중첩된 유효 JSON을 찾는다. (예: 로그의 `body={"a":1}` → `{"a":1}`)
+ * 문자열 리터럴 '안'의 raw 줄바꿈(\r, \n)을 제거한다. 터미널 폭에서 랩된 로그를 복사하면
+ * 문자열 중간에 실제 줄바꿈이 끼는데, JSON 스펙상 제어문자는 불법이라 파싱이 통째로 깨진다.
+ * 랩 줄바꿈은 표시용으로 삽입된 문자이므로 '제거'가 원문 복원이다(공백 치환은 ID·키를 오염시킴).
+ * removed: 제거한 문자들의 원본 오프셋(오름차순) — 트리 pos를 원본 좌표로 되돌릴 때 사용.
  */
-/** 블록 텍스트와 그 절대 시작 오프셋을 함께 추출한다(중첩 복구 시 base로 절대 위치 유지). */
-export function extractJsonSpans(text: string, base = 0, depth = 0): Array<{ text: string; start: number }> {
+export function repairJsonStringNewlines(text: string): { text: string; removed: number[] } {
+  const removed: number[] = [];
+  let out = '';
+  let inStr = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr && (c === '\n' || c === '\r')) {
+      removed.push(i); // 이스케이프 중간에 낀 랩(`\` 뒤 줄바꿈)도 있으므로 escaped 상태는 건드리지 않는다
+      continue;
+    }
+    out += c;
+    if (inStr) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') {
+      inStr = true;
+    }
+  }
+  return { text: out, removed };
+}
+
+/** 복구 텍스트의 오프셋 → 원본 오프셋(removed는 repairJsonStringNewlines의 오름차순 원본 오프셋). */
+export function mapRepairedOffset(removed: number[], off: number): number {
+  let k = 0;
+  while (k < removed.length && removed[k] <= off + k) k++;
+  return off + k;
+}
+
+function parsesAsJson(s: string): boolean {
+  try {
+    JSON.parse(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 텍스트에서 유효한 JSON 객체/배열 블록을 모두 추출한다(O(n) 단일 패스).
+ * 문자열·이스케이프를 인식하고, 균형은 맞지만 JSON이 아닌 구간은 먼저 랩 줄바꿈 복구를
+ * 시도한 뒤, 그래도 안 되면 내부를 다시 훑어 중첩된 유효 JSON을 찾는다.
+ * (예: 로그의 `body={"a":1}` → `{"a":1}`)
+ */
+/** 블록 텍스트와 그 절대 시작 오프셋을 함께 추출한다(중첩 복구 시 base로 절대 위치 유지).
+ *  removed가 있으면 text는 복구본이고, removed는 블록 시작 기준 상대 오프셋이다. */
+export function extractJsonSpans(
+  text: string,
+  base = 0,
+  depth = 0,
+): Array<{ text: string; start: number; removed?: number[] }> {
   if (depth > 40) return [];
-  const out: Array<{ text: string; start: number }> = [];
+  const out: Array<{ text: string; start: number; removed?: number[] }> = [];
   for (const [s, e] of topLevelSpans(text)) {
     const span = text.slice(s, e + 1);
-    try {
-      JSON.parse(span);
+    if (parsesAsJson(span)) {
       out.push({ text: span, start: base + s });
-    } catch {
+      continue;
+    }
+    const rep = repairJsonStringNewlines(span);
+    if (rep.removed.length > 0 && parsesAsJson(rep.text)) {
+      out.push({ text: rep.text, start: base + s, removed: rep.removed });
+    } else {
       out.push(...extractJsonSpans(text.slice(s + 1, e), base + s + 1, depth + 1));
     }
   }

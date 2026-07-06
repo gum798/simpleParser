@@ -18,3 +18,9 @@ test('작은 JSON이 든 산문/마크다운은 json으로 오인하지 않음',
   expect(detectFormat('The API returns {"status":"ok"} on success.')).toBe('markdown');
   expect(detectFormat('# 제목\n\n```json\n{"a":1}\n```')).toBe('markdown');
 });
+
+test('문자열 안 줄바꿈이 낀 로그 JSON(터미널 랩 복사)도 json으로 감지', () => {
+  const log =
+    'request_body path=/internal body=\n{"runId":"fb97","taskContent":["과제내용\n1","지표를\n실시간으로 수집해 정제한다"]}';
+  expect(detectFormat(log)).toBe('json');
+});

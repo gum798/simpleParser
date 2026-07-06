@@ -2,7 +2,13 @@ import { parseTree, type Node as JsoncNode } from 'jsonc-parser';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import { findHighlights, markStyle, type CompiledRule } from './highlight/matcher';
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
-import { extractJsonSpans, topLevelSpans, parseJsonTolerant } from './format/json';
+import {
+  extractJsonSpans,
+  topLevelSpans,
+  parseJsonTolerant,
+  repairJsonStringNewlines,
+  mapRepairedOffset,
+} from './format/json';
 import { parseYamlTolerant } from './format/yaml';
 import { xmlDiagnostics } from './format/xml';
 
@@ -22,11 +28,6 @@ export function buildTree(text: string, fmt: Format): TreeResult {
 }
 
 function jsonTree(text: string): TreeResult {
-  const spans = topLevelSpans(text);
-  const isWholeSingleSpan =
-    spans.length === 1 &&
-    text.slice(0, spans[0][0]).trim() === '' &&
-    text.slice(spans[0][1] + 1).trim() === '';
   let validWhole = false;
   try {
     JSON.parse(text);
@@ -34,6 +35,39 @@ function jsonTree(text: string): TreeResult {
   } catch {
     /* not strictly valid */
   }
+
+  // 문자열 안 랩 줄바꿈만 제거하면 유효해지는 문서 → 복구본으로 파싱, pos는 원본 좌표로 보정.
+  // resolveJson과 동일하게 스팬 게이트보다 먼저 시도한다(괄호 없는 최상위 스칼라는 스팬이 0개).
+  if (!validWhole) {
+    const rep = repairJsonStringNewlines(text);
+    if (rep.removed.length > 0) {
+      try {
+        JSON.parse(rep.text);
+        const node = parseTree(rep.text, undefined, { allowTrailingComma: true });
+        if (node) {
+          const root = jsoncToTree(node, undefined, 0, rep.removed);
+          root.partial = true; // 내용을 고친 복구
+          return {
+            root,
+            diagnostics: [
+              {
+                message: `문자열 안의 줄바꿈 ${rep.removed.length}개를 제거해 복구했습니다(터미널 랩 복사 추정)`,
+                severity: 'warning',
+              },
+            ],
+          };
+        }
+      } catch {
+        /* 랩 복구로도 안 됨 → 기존 관용 경로로 */
+      }
+    }
+  }
+
+  const spans = topLevelSpans(text);
+  const isWholeSingleSpan =
+    spans.length === 1 &&
+    text.slice(0, spans[0][0]).trim() === '' &&
+    text.slice(spans[0][1] + 1).trim() === '';
 
   if (validWhole || isWholeSingleSpan) {
     const node = parseTree(text, undefined, { allowTrailingComma: true });
@@ -44,12 +78,12 @@ function jsonTree(text: string): TreeResult {
     return { root, diagnostics };
   }
 
-  // 로그/텍스트 추출 모드: 블록별 parseTree + 절대 오프셋
+  // 로그/텍스트 추출 모드: 블록별 parseTree + 절대 오프셋(복구 블록은 removed로 원본 좌표 보정)
   const blocks = extractJsonSpans(text);
   const nodes = blocks
     .map((b) => {
       const n = parseTree(b.text, undefined, { allowTrailingComma: true });
-      return n ? jsoncToTree(n, undefined, b.start) : null;
+      return n ? jsoncToTree(n, undefined, b.start, b.removed) : null;
     })
     .filter((n): n is TreeNode => n !== null);
   if (nodes.length === 0) return fromValue(parseJsonTolerant(text));
@@ -57,18 +91,20 @@ function jsonTree(text: string): TreeResult {
   return { root, diagnostics: [] };
 }
 
-function jsoncToTree(node: JsoncNode, key: string | undefined, base: number): TreeNode {
-  const pos = { from: base + node.offset, to: base + node.offset + node.length };
+// removed: 파싱한 텍스트가 랩 줄바꿈 복구본일 때, 제거분을 되돌려 원본 좌표의 pos를 만들기 위한 오프셋들
+function jsoncToTree(node: JsoncNode, key: string | undefined, base: number, removed?: number[]): TreeNode {
+  const abs = (off: number): number => base + (removed?.length ? mapRepairedOffset(removed, off) : off);
+  const pos = { from: abs(node.offset), to: abs(node.offset + node.length) };
   if (node.type === 'object') {
     const children = (node.children ?? []).map((prop) => {
       const k = String(prop.children?.[0]?.value ?? '');
       const valNode = prop.children?.[1];
-      if (valNode) return jsoncToTree(valNode, k, base);
+      if (valNode) return jsoncToTree(valNode, k, base, removed);
       return {
         key: k,
         type: 'scalar' as const,
         value: '',
-        pos: { from: base + prop.offset, to: base + prop.offset + prop.length },
+        pos: { from: abs(prop.offset), to: abs(prop.offset + prop.length) },
       };
     });
     return { key, type: 'object', pos, children };
@@ -78,7 +114,7 @@ function jsoncToTree(node: JsoncNode, key: string | undefined, base: number): Tr
       key,
       type: 'array',
       pos,
-      children: (node.children ?? []).map((c, i) => jsoncToTree(c, String(i), base)),
+      children: (node.children ?? []).map((c, i) => jsoncToTree(c, String(i), base, removed)),
     };
   }
   return { key, type: 'scalar', value: node.type === 'null' ? 'null' : String(node.value), pos };
