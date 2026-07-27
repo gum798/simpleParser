@@ -2,6 +2,7 @@ import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, Compartment } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { linter, lintGutter, forceLinting, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
+import { search } from '@codemirror/search';
 import { json } from '@codemirror/lang-json';
 import { html } from '@codemirror/lang-html';
 import { xml } from '@codemirror/lang-xml';
@@ -63,6 +64,8 @@ export function createEditor(
       doc: initial.text,
       extensions: [
         basicSetup,
+        // 검색 매치가 하단 검색 패널에 가려지지 않도록 항상 화면 세로 중앙으로 스크롤
+        search({ scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: 'center' }) }),
         language.of(langFor[initial.fmt]()),
         darkTheme.of(initial.dark ? oneDark : []),
         lintGutter(),
