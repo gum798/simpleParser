@@ -107,7 +107,7 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
 body.rules-open:not(.rules-right) .cm-content,
 body.rules-open:not(.rules-right) #panel .pane-body { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
 /* 하단 도킹 규칙 오버레이가 검색 패널을 덮지 않게 검색 패널을 오버레이 위로 올림 */
-body.rules-open:not(.rules-right) .cm-panels-bottom { margin-bottom: calc(var(--rules-h, 240px) + 8px); }
+body.rules-open:not(.rules-right) .cm-panels-bottom { margin-bottom: calc(var(--rules-h, 240px) + 28px); }
 /* 오른쪽 도킹: 두 카드(INPUT/OUTPUT) 전체를 오버레이 왼쪽으로 밀어 아무것도 안 가리게(리뷰 반영) */
 body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px) + 12px); }
 
@@ -229,7 +229,7 @@ body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px)
   #rules.dock-right .rule-row { flex-basis: 200px; max-width: 340px; }
   body.rules-open.rules-right #content { padding-right: 10px; }
   body.rules-open.rules-right .cm-content { padding-bottom: calc(var(--rules-h, 240px) + 56px); }
-  body.rules-open.rules-right .cm-panels-bottom { margin-bottom: calc(var(--rules-h, 240px) + 8px); }
+  body.rules-open.rules-right .cm-panels-bottom { margin-bottom: calc(var(--rules-h, 240px) + 28px); }
 }
 
 /* 검색 패널(커스텀): 행 레이아웃과 매치 카운터 */
