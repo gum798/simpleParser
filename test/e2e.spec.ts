@@ -718,3 +718,58 @@ test('원본 유지: 후행 콤마(JSONC) 입력은 본문 그대로 + 보류 �
   await expect(page.locator('.cm-content')).toContainText('{"a":1,}'); // 본문 무변경
   await expect(page.locator('#status')).toContainText('보류'); // 이유가 상태줄에 남는다
 });
+
+// ── INPUT/OUTPUT 좌우 너비 조절 디바이더 ──
+
+test('디바이더 드래그로 OUTPUT 너비 조절 + 새로고침 후 유지', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await expect(page.locator('.pane-divider')).toBeHidden(); // 패널 닫힘 → 디바이더 숨김
+  await clickBtn(page, '트리');
+  const divider = page.locator('.pane-divider');
+  await expect(divider).toBeVisible();
+  const before = (await page.locator('#panel').boundingBox())!;
+  const box = (await divider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 150, box.y + 200, { steps: 5 });
+  await page.mouse.up();
+  const after = (await page.locator('#panel').boundingBox())!;
+  expect(after.width).toBeGreaterThan(before.width + 100); // 왼쪽으로 끌면 OUTPUT이 넓어진다
+  await page.reload();
+  await clickBtn(page, '트리');
+  const restored = (await page.locator('#panel').boundingBox())!;
+  expect(Math.abs(restored.width - after.width)).toBeLessThan(5); // localStorage 복원
+});
+
+test('디바이더 더블클릭으로 기본 너비 복귀', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await clickBtn(page, '트리');
+  const divider = page.locator('.pane-divider');
+  const def = (await page.locator('#panel').boundingBox())!;
+  const box = (await divider.boundingBox())!;
+  await page.mouse.move(box.x + 3, box.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 200, box.y + 200, { steps: 5 });
+  await page.mouse.up();
+  const widened = (await page.locator('#panel').boundingBox())!;
+  expect(widened.width).toBeGreaterThan(def.width + 100);
+  await divider.dblclick();
+  const reset = (await page.locator('#panel').boundingBox())!;
+  expect(Math.abs(reset.width - def.width)).toBeLessThan(10); // 기본(38%)으로 복귀
+});
+
+test('모바일 폭(상하 스택)에서는 디바이더가 보이지 않는다', async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 800 });
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await clickBtn(page, '트리');
+  await expect(page.locator('#panel')).toBeVisible();
+  await expect(page.locator('.pane-divider')).toBeHidden();
+});

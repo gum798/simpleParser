@@ -77,7 +77,12 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
   border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .pane[hidden] { display: none; }
 #input-pane { flex: 1; position: relative; }
-#panel { width: 38%; max-width: 520px; }
+#panel { width: var(--panel-w, 38%); max-width: var(--panel-max, 520px); }
+/* INPUT/OUTPUT 사이 너비 조절 디바이더 — 패널이 열릴 때만 표시, 드래그 중 강조 */
+.pane-divider { flex: none; width: 8px; margin: 0 -4px; cursor: col-resize; border-radius: 4px;
+  touch-action: none; }
+.pane-divider:hover, .pane-divider.dragging { background: var(--accent-weak); }
+.pane-divider[hidden] { display: none; }
 .pane-head { display: flex; align-items: center; padding: 6px 12px; flex: none;
   border-bottom: 1px solid var(--border); }
 .pane-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; color: var(--muted); }
@@ -242,6 +247,7 @@ body.rules-open.rules-right #content { padding-right: calc(var(--rules-w, 340px)
 @media (max-width: 760px) {
   #content { flex-direction: column; }
   #panel { width: auto; max-width: none; max-height: 45vh; }
+  .pane-divider { display: none; } /* 상하 스택에선 좌우 조절 없음 */
   #toolbar { padding: 6px 10px; }
   /* 좁은 화면에선 오른쪽 도킹을 하단 도킹처럼 되돌림(에디터 폭 붕괴 방지, 리뷰 반영) */
   #rules.dock-right { left: 12px; right: 12px; top: auto; bottom: 40px; width: auto; max-height: 45vh; }

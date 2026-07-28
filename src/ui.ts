@@ -283,6 +283,69 @@ export function mountApp(root: AppRoot): void {
   panelHead.append(viewSeg, copyOutBtn, depthCtrl);
   root.panel.append(panelHead, panelBody);
 
+  // ── INPUT/OUTPUT 좌우 너비 조절: 디바이더 드래그(개인 취향 → localStorage) ──
+  const PANEL_W_KEY = 'simpleparser.panelW';
+  const MIN_PANEL_W = 220; // OUTPUT 최소 폭
+  const MIN_INPUT_W = 300; // INPUT 최소 폭(디바이더가 왼쪽 끝까지 못 가게)
+  const divider = document.createElement('div');
+  divider.className = 'pane-divider';
+  divider.title = '드래그로 좌우 너비 조절 · 더블클릭으로 초기화';
+  divider.setAttribute('role', 'separator');
+  divider.setAttribute('aria-orientation', 'vertical');
+  divider.hidden = true; // 패널이 열릴 때만 표시
+  root.panel.before(divider);
+  const content = root.panel.parentElement as HTMLElement; // #content
+  function applyPanelWidth(px: number | null): void {
+    if (px === null) {
+      content.style.removeProperty('--panel-w');
+      content.style.removeProperty('--panel-max');
+    } else {
+      content.style.setProperty('--panel-w', `${px}px`);
+      content.style.setProperty('--panel-max', 'none'); // 기본 상한(520px)은 사용자 조절 시 해제
+    }
+  }
+  try {
+    const saved = Number(localStorage.getItem(PANEL_W_KEY));
+    if (Number.isFinite(saved) && saved >= MIN_PANEL_W) applyPanelWidth(saved);
+  } catch {
+    /* 프라이빗 모드 등 → 기본 너비 */
+  }
+  divider.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); // 드래그 중 텍스트 선택 방지
+    divider.setPointerCapture(e.pointerId);
+    divider.classList.add('dragging');
+    const startX = e.clientX;
+    const startW = root.panel.getBoundingClientRect().width; // 시작점 기준 상대 이동(첫 이동 점프 방지)
+    const maxW = content.getBoundingClientRect().width - MIN_INPUT_W;
+    let w: number | null = null;
+    const onMove = (ev: PointerEvent): void => {
+      w = Math.min(Math.max(startW + (startX - ev.clientX), MIN_PANEL_W), maxW);
+      applyPanelWidth(w);
+    };
+    const onUp = (): void => {
+      divider.classList.remove('dragging');
+      divider.removeEventListener('pointermove', onMove);
+      divider.removeEventListener('pointerup', onUp);
+      if (w !== null) {
+        try {
+          localStorage.setItem(PANEL_W_KEY, String(Math.round(w)));
+        } catch {
+          /* 무시 */
+        }
+      }
+    };
+    divider.addEventListener('pointermove', onMove);
+    divider.addEventListener('pointerup', onUp);
+  });
+  divider.addEventListener('dblclick', () => {
+    applyPanelWidth(null); // 기본 너비(38%, 최대 520px)로 복귀
+    try {
+      localStorage.removeItem(PANEL_W_KEY);
+    } catch {
+      /* 무시 */
+    }
+  });
+
   // 패널 열림 상태(트리/미리보기, 하이라이트 규칙)는 URL로 저장/복원한다.
   let panelOpen = false;
   let rulesOpen = false;
@@ -588,12 +651,14 @@ export function mountApp(root: AppRoot): void {
   function openPanel(): void {
     renderPanelContent();
     root.panel.hidden = false;
+    divider.hidden = false; // 패널과 함께 너비 조절 디바이더 표시
     panelOpen = true;
   }
 
   function toggleView(): void {
     if (!root.panel.hidden) {
       root.panel.hidden = true; // 이미 열려 있으면 닫기(토글, 스펙 §4.4)
+      divider.hidden = true;
       panelOpen = false;
     } else {
       openPanel();
