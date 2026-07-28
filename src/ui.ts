@@ -2,7 +2,7 @@ import type { Diagnostic, Format, State, TreeNode } from './types';
 import { detectFormat } from './detect';
 import { approxFind } from './treeJump';
 import { format } from './format/index';
-import { buildTree, renderTree, maxDepth } from './tree';
+import { buildTree, renderTree, maxDepth, highlightText } from './tree';
 import { renderMarkdown } from './preview';
 import { encode, decode } from './urlState';
 import { createEditor } from './editor';
@@ -138,6 +138,28 @@ export function mountApp(root: AppRoot): void {
   const formatBtn = button('정렬');
   formatBtn.className = 'btn';
   formatBtn.addEventListener('click', () => runFormat());
+  // 원본 유지(비파괴 정렬): 켜면 정렬이 입력창을 수정하지 않고 결과를 OUTPUT 텍스트 뷰로 보낸다.
+  // 개인 취향 설정 → 규칙창 도킹처럼 localStorage에 저장(URL 상태와 무관).
+  const KEEP_KEY = 'simpleparser.keepOriginal';
+  let keepOriginal = false;
+  try {
+    keepOriginal = localStorage.getItem(KEEP_KEY) === '1';
+  } catch {
+    /* 프라이빗 모드 등 → 기본(끔) */
+  }
+  const keepBtn = button('원본 유지');
+  keepBtn.className = 'btn';
+  keepBtn.title = '정렬해도 입력창은 그대로 두고 결과를 OUTPUT에 표시';
+  keepBtn.setAttribute('aria-pressed', String(keepOriginal));
+  keepBtn.addEventListener('click', () => {
+    keepOriginal = !keepOriginal;
+    try {
+      localStorage.setItem(KEEP_KEY, keepOriginal ? '1' : '0');
+    } catch {
+      /* 무시 */
+    }
+    keepBtn.setAttribute('aria-pressed', String(keepOriginal));
+  });
   const copyBtn = button('복사');
   copyBtn.className = 'btn';
   copyBtn.addEventListener('click', () => {
@@ -169,7 +191,7 @@ export function mountApp(root: AppRoot): void {
   const saveBtn = button('저장');
   saveBtn.className = 'btn primary';
   saveBtn.addEventListener('click', () => void save());
-  root.toolbar.append(seg, formatBtn, copyBtn, cleanBtn, viewBtn, highlightBtn, spacer, saveBtn);
+  root.toolbar.append(seg, formatBtn, keepBtn, copyBtn, cleanBtn, viewBtn, highlightBtn, spacer, saveBtn);
 
   const editor = createEditor(
     root.editorHost,
@@ -213,8 +235,47 @@ export function mountApp(root: AppRoot): void {
   depthMinus.addEventListener('click', () => nudgeDepth(-1));
   depthPlus.addEventListener('click', () => nudgeDepth(1));
   depthCtrl.append(depthLabel, depthMinus, depthVal, depthPlus);
+  // OUTPUT 뷰 전환(트리|텍스트) — markdown(미리보기 전용)에는 숨김. 뷰 상태는 세션 한정:
+  // 원본 유지 정렬이 텍스트 뷰를 자동으로 열어주므로 URL/localStorage 저장은 하지 않는다.
+  let panelView: 'tree' | 'text' = 'tree';
+  const viewSeg = document.createElement('span');
+  viewSeg.className = 'view-seg';
+  const viewBtns: Array<[HTMLButtonElement, 'tree' | 'text']> = [];
+  for (const [label, v] of [
+    ['트리', 'tree'],
+    ['텍스트', 'text'],
+  ] as const) {
+    const b = button(label);
+    b.className = 'view-btn';
+    b.dataset.view = v;
+    b.addEventListener('click', () => {
+      if (panelView === v) return;
+      panelView = v;
+      renderPanelContent();
+    });
+    viewBtns.push([b, v]);
+    viewSeg.appendChild(b);
+  }
+  // 텍스트 뷰 전용 복사(정렬 결과) — 툴바 [복사]는 입력을 복사하므로 별도 버튼.
+  const copyOutBtn = button('복사');
+  copyOutBtn.className = 'output-copy';
+  copyOutBtn.title = '정렬 결과 복사';
+  copyOutBtn.hidden = true;
+  let lastOutput: string | undefined;
+  copyOutBtn.addEventListener('click', () => {
+    if (lastOutput === undefined) return;
+    const output = lastOutput;
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(output);
+        showToast('정렬 결과를 복사했습니다');
+      } catch {
+        showToast('복사 실패 — 결과를 드래그해 복사하세요');
+      }
+    })();
+  });
   const panelHead = paneHead('OUTPUT');
-  panelHead.appendChild(depthCtrl);
+  panelHead.append(viewSeg, copyOutBtn, depthCtrl);
   root.panel.append(panelHead, panelBody);
 
   // 패널 열림 상태(트리/미리보기, 하이라이트 규칙)는 URL로 저장/복원한다.
@@ -348,6 +409,16 @@ export function mountApp(root: AppRoot): void {
   // safeOnly=true(자동/붙여넣기 경로)일 때는 '들여쓰기만 바뀌는 비파괴 정렬'만 적용한다.
   // 수동 [정렬] 버튼(safeOnly 없음)은 기존대로 로그 속 JSON 추출 등 적극적 정렬을 그대로 수행.
   function runFormat(opts?: { safeOnly?: boolean }): void {
+    // 원본 유지: 입력창을 절대 수정하지 않는다. 수동 [정렬]은 결과를 OUTPUT 텍스트 뷰로 열고,
+    // 자동(붙여넣기) 경로는 조용히 통과한다.
+    if (keepOriginal) {
+      if (!opts?.safeOnly) {
+        panelView = 'text';
+        openPanel(); // renderPanelContent가 정렬 결과 표시 + 진단 적용까지 수행
+        persist(); // 패널 열림 상태(p) 저장
+      }
+      return;
+    }
     const input = editor.getValue();
     const before = format(input, currentFormat);
     if (before.output !== undefined) {
@@ -443,6 +514,9 @@ export function mountApp(root: AppRoot): void {
   function renderPanelContent(): void {
     const scrollTop = panelBody.scrollTop; // 재렌더 시 보던 위치 유지
     panelBody.innerHTML = '';
+    viewSeg.hidden = !canFormat(currentFormat); // markdown은 미리보기 전용 → 전환 숨김
+    for (const [b, v] of viewBtns) b.classList.toggle('active', v === panelView);
+    copyOutBtn.hidden = true;
     if (currentFormat === 'markdown') {
       depthCtrl.hidden = true;
       const { html } = renderMarkdown(editor.getValue());
@@ -450,6 +524,24 @@ export function mountApp(root: AppRoot): void {
       view.className = 'markdown-body';
       view.innerHTML = html; // 정화 완료된 HTML
       panelBody.appendChild(view);
+    } else if (panelView === 'text') {
+      // 텍스트 뷰: 입력은 그대로 두고 정렬 결과만 보여준다(원본 유지 정렬의 출력 창)
+      depthCtrl.hidden = true;
+      const r = format(editor.getValue(), currentFormat);
+      lastOutput = r.output;
+      if (r.output !== undefined) {
+        copyOutBtn.hidden = false;
+        const pre = document.createElement('pre');
+        pre.className = 'output-text';
+        pre.append(highlightText(r.output, compileRules(currentRules)));
+        panelBody.appendChild(pre);
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'output-empty';
+        empty.textContent = '정렬 결과 없음 — 입력을 확인하세요';
+        panelBody.appendChild(empty);
+      }
+      applyDiagnostics(r.diagnostics);
     } else {
       const { root: treeRoot, diagnostics } = buildTree(editor.getValue(), currentFormat);
       if (treeRoot) {
