@@ -1,7 +1,7 @@
 import type { Diagnostic, Format, State, TreeNode } from './types';
 import { detectFormat } from './detect';
 import { approxFind } from './treeJump';
-import { format } from './format/index';
+import { format, formatKeepOriginal } from './format/index';
 import { buildTree, renderTree, maxDepth, highlightText } from './tree';
 import { renderMarkdown } from './preview';
 import { encode, decode } from './urlState';
@@ -143,8 +143,8 @@ export function mountApp(root: AppRoot): void {
   const formatBtn = button('정렬');
   formatBtn.className = 'btn';
   formatBtn.addEventListener('click', () => runFormat());
-  // 원본 유지(비파괴 정렬): 켜면 정렬이 입력창을 수정하지 않고 결과를 OUTPUT 텍스트 뷰로 보낸다.
-  // 개인 취향 설정 → 규칙창 도킹처럼 localStorage에 저장(URL 상태와 무관).
+  // 원본 유지(제자리 정렬): 켜면 정렬이 주변 텍스트(로그 접두어 등)를 지우지 않고
+  // JSON 블록만 그 자리에서 펼친다. 개인 취향 설정 → 규칙창 도킹처럼 localStorage에 저장.
   const KEEP_KEY = 'simpleparser.keepOriginal';
   let keepOriginal = false;
   try {
@@ -154,7 +154,7 @@ export function mountApp(root: AppRoot): void {
   }
   const keepBtn = button('원본 유지');
   keepBtn.className = 'btn';
-  keepBtn.title = '정렬해도 입력창은 그대로 두고 결과를 OUTPUT에 표시';
+  keepBtn.title = '정렬해도 주변 텍스트(로그 등)를 지우지 않고 JSON만 제자리에서 펼침';
   keepBtn.setAttribute('aria-pressed', String(keepOriginal));
   keepBtn.addEventListener('click', () => {
     keepOriginal = !keepOriginal;
@@ -414,17 +414,35 @@ export function mountApp(root: AppRoot): void {
   // safeOnly=true(자동/붙여넣기 경로)일 때는 '들여쓰기만 바뀌는 비파괴 정렬'만 적용한다.
   // 수동 [정렬] 버튼(safeOnly 없음)은 기존대로 로그 속 JSON 추출 등 적극적 정렬을 그대로 수행.
   function runFormat(opts?: { safeOnly?: boolean }): void {
-    // 원본 유지: 입력창을 절대 수정하지 않는다. 수동 [정렬]은 결과를 OUTPUT 텍스트 뷰로 열고,
-    // 자동(붙여넣기) 경로는 조용히 통과한다.
+    const input = editor.getValue();
+    // 원본 유지: 주변 텍스트(로그 접두어 등)를 지우지 않는 제자리 정렬만 적용한다.
+    // 데이터가 줄어들 수 있는 결과(관용 복구·중복 키 병합)는 formatKeepOriginal이 보류하고,
+    // 자동(붙여넣기) 경로는 입력을 건드리지 않도록 조용히 통과한다.
     if (keepOriginal) {
       if (!opts?.safeOnly) {
-        panelView = 'text';
-        openPanel(); // renderPanelContent가 정렬 결과 표시 + 진단 적용까지 수행
-        persist(); // 패널 열림 상태(p) 저장
+        const r = formatKeepOriginal(input, currentFormat);
+        const errs = (ds: Diagnostic[]): number => ds.filter((d) => d.severity === 'error').length;
+        if (r.output !== undefined && r.output !== input) {
+          // 교체 후 본문 기준으로 재검사: 새 에러가 생기면 보류(통짜 경로와 동일한 안전 정책)
+          const after = format(r.output, currentFormat);
+          if (errs(after.diagnostics) > errs(r.diagnostics)) {
+            showToast('정렬을 보류했습니다(원문 보존)');
+            applyDiagnostics(r.diagnostics);
+            return;
+          }
+          editor.setValue(r.output);
+          editor.scrollToTop();
+          // 위치 없는 변환 경고(랩 복구 등)는 유지하고 토스트로도 알림 — 이후 재계산에 덮여도 고지가 남게
+          const notices = r.diagnostics.filter((d) => d.offset === undefined && d.severity === 'warning');
+          if (notices.length > 0) showToast(notices[0].message);
+          applyDiagnostics([...notices, ...after.diagnostics]); // 교체된 새 본문에 맞는 진단(오프셋 일치)
+        } else {
+          if (r.output === undefined) showToast('정렬을 보류했습니다(원문 보존)');
+          applyDiagnostics(r.diagnostics);
+        }
       }
       return;
     }
-    const input = editor.getValue();
     const before = format(input, currentFormat);
     if (before.output !== undefined) {
       // 안전 정책: 정렬 결과가 새 에러를 만들면 보류

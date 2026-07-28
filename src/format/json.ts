@@ -127,6 +127,109 @@ export function formatJson(text: string): FormatResult {
 }
 
 /**
+ * 제자리 정렬(원본 유지 모드): 주변 텍스트(로그 접두어 등)는 한 글자도 지우지 않고,
+ * 박힌 JSON 블록만 그 자리에서 2칸 들여쓰기로 펼친다. 랩 줄바꿈이 낀 블록은 복구해 펼친다.
+ * 전체가 단일 JSON(주변 텍스트 없음)이거나 블록이 없으면 기존 formatJson과 동일하게 동작.
+ */
+export function formatJsonInPlace(text: string): FormatResult {
+  const r = resolveJson(text);
+  // 원본 유지 약속: 출력이 있으면 데이터 무손실이 보장된다.
+  // JSON.parse→stringify 왕복은 중복 키 병합·큰 정수 절삭·1.0→1·이스케이프 정규화로
+  // 값을 바꾸므로 쓰지 않고, 토큰을 그대로 보존하는 프린터로 공백만 다시 깐다.
+  if (r.kind === 'value') {
+    return { output: prettyPrintJsonTokens(text), diagnostics: [], faithful: false };
+  }
+  if (r.kind === 'repaired') {
+    const rep = repairJsonStringNewlines(text);
+    return {
+      output: prettyPrintJsonTokens(rep.text),
+      diagnostics: [wrapRepairWarning(rep.removed.length)],
+      faithful: false,
+    };
+  }
+  if (r.kind === 'tolerant') {
+    // 관용 복구는 주석·후행 콤마 제거 등 내용을 잃을 수 있으므로 본문은 두고 보류 사유만 알린다.
+    // (JSONC로는 유효해 파서 진단이 0건인 입력도 침묵하지 않도록 경고를 합성)
+    const diagnostics: Diagnostic[] = r.diagnostics.length
+      ? r.diagnostics
+      : [{ message: '주석/후행 콤마가 있어 정렬을 보류했습니다(제거 시 내용 손실)', severity: 'warning' }];
+    return { diagnostics, faithful: false };
+  }
+  // blocks: 스팬은 서로 겹치지 않는 오름차순 — 원본 길이 = 복구본 길이 + 제거된 줄바꿈 수
+  const spans = extractJsonSpans(text);
+  let out = '';
+  let pos = 0;
+  let removedNewlines = 0;
+  for (const s of spans) {
+    const origLen = s.text.length + (s.removed?.length ?? 0);
+    out += text.slice(pos, s.start);
+    out += prettyPrintJsonTokens(s.text);
+    pos = s.start + origLen;
+    removedNewlines += s.removed?.length ?? 0;
+  }
+  out += text.slice(pos);
+  const diagnostics: Diagnostic[] = removedNewlines > 0 ? [wrapRepairWarning(removedNewlines)] : [];
+  return { output: out, diagnostics, faithful: false }; // 블록 내부 공백 변경 → 자동 정렬 보류
+}
+
+function wrapRepairWarning(count: number): Diagnostic {
+  return {
+    message: `문자열 안의 줄바꿈 ${count}개를 제거해 복구했습니다(터미널 랩 복사 추정)`,
+    severity: 'warning',
+  };
+}
+
+/**
+ * 유효한 JSON 텍스트를 2칸 들여쓰기로 다시 깐다 — 문자열·숫자·리터럴 토큰은 바이트
+ * 그대로 보존한다(JSON.stringify와 달리 중복 키·큰 정수·1.0·유니코드 이스케이프 무변형).
+ * 구조 밖 공백만 버리고 새로 배치하므로 출력은 항상 입력과 값이 동일하다.
+ */
+export function prettyPrintJsonTokens(src: string): string {
+  let out = '';
+  let depth = 0;
+  let inStr = false;
+  let escaped = false;
+  const indent = (): string => '  '.repeat(depth);
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (inStr) {
+      out += c;
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+      out += c;
+    } else if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      continue; // 구조 밖 공백은 버리고 새로 깐다
+    } else if (c === '{' || c === '[') {
+      let j = i + 1; // 빈 객체/배열은 {}·[]로 붙여 쓴다(JSON.stringify와 동일)
+      while (j < src.length && /\s/.test(src[j])) j++;
+      if (src[j] === (c === '{' ? '}' : ']')) {
+        out += c + src[j];
+        i = j;
+      } else {
+        out += c;
+        depth++;
+        out += '\n' + indent();
+      }
+    } else if (c === '}' || c === ']') {
+      depth--;
+      out += '\n' + indent() + c;
+    } else if (c === ',') {
+      out += ',\n' + indent();
+    } else if (c === ':') {
+      out += ': ';
+    } else {
+      out += c; // 숫자·true/false/null 리터럴은 그대로
+    }
+  }
+  return out;
+}
+
+/**
  * 문자열 리터럴 '안'의 raw 줄바꿈(\r, \n)을 제거한다. 터미널 폭에서 랩된 로그를 복사하면
  * 문자열 중간에 실제 줄바꿈이 끼는데, JSON 스펙상 제어문자는 불법이라 파싱이 통째로 깨진다.
  * 랩 줄바꿈은 표시용으로 삽입된 문자이므로 '제거'가 원문 복원이다(공백 치환은 ID·키를 오염시킴).
