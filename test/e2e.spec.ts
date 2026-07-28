@@ -623,3 +623,64 @@ test('마크다운에서는 트리/텍스트 전환이 보이지 않는다(미�
   await expect(page.locator('#panel .markdown-body h1')).toBeVisible();
   await expect(page.locator('#panel .view-seg')).toBeHidden();
 });
+
+// ── 리뷰 확정 결함 회귀 테스트(2026-07-28 적대적 리뷰) ──
+
+test('패널이 열린 채 포맷을 바꾸면 OUTPUT 컨트롤·본문이 함께 갱신된다', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"x":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('#panel .output-text')).toContainText('"x": 1');
+  await page.waitForTimeout(600); // 디바운스 정착 후 전환(onEdit 레이스로 우연히 통과하지 않게)
+  await pickFormat(page, 'markdown');
+  // markdown은 미리보기 전용: 뷰 전환·복사 숨김 + 본문은 미리보기로 교체(낡은 JSON 결과 잔류 금지)
+  await expect(page.locator('#panel .view-seg')).toBeHidden();
+  await expect(page.locator('#panel .output-copy')).toBeHidden();
+  await expect(page.locator('#panel .markdown-body')).toBeVisible();
+  await expect(page.locator('#panel .output-text')).toHaveCount(0);
+});
+
+test('HTML 빈 입력 + 원본 유지 정렬: 결과 없음 안내, [복사]는 숨김(빈 문자열 복사 방지)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'html');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('#panel .output-empty')).toBeVisible();
+  await expect(page.locator('#panel .output-copy')).toBeHidden();
+});
+
+test('원본 유지 정렬 후 툴바 뷰 버튼 라벨은 [텍스트](라벨-동작 일치)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  // 툴바 버튼이 다시 여는 뷰(텍스트)와 라벨이 일치해야 한다
+  await expect(page.locator('#toolbar .btn', { hasText: /^텍스트$/ })).toBeVisible();
+  // 헤더 세그먼트로 트리로 돌아가면 라벨도 [트리]로 복귀
+  await page.locator('#panel .view-btn[data-view="tree"]').click();
+  await expect(page.locator('#toolbar .btn', { hasText: /^트리$/ })).toBeVisible();
+});
+
+test('텍스트 뷰에도 하이라이트 규칙 색이 적용된다', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'simpleparser.highlightRules',
+      JSON.stringify([{ id: '1', name: 'x', regex: 'stage', enabled: true, textColor: '#ff0000', bgColor: '#ffff00' }]),
+    );
+  });
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"stage":"A"}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  const mark = page.locator('#panel .output-text span', { hasText: 'stage' }).first();
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveCSS('color', 'rgb(255, 0, 0)');
+  await expect(mark).toHaveCSS('background-color', 'rgb(255, 255, 0)');
+});

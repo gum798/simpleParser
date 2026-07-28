@@ -31,8 +31,10 @@ export function shouldAutoFormat(text: string, fmt: Format): boolean {
   return text.trim() !== '' && text.length <= AUTO_FORMAT_MAX && canFormat(fmt);
 }
 
-export function viewLabel(fmt: Format): string {
-  return fmt === 'markdown' ? '미리보기' : '트리';
+/** 툴바 뷰 버튼 라벨 — 버튼이 다시 열 뷰(트리/텍스트/미리보기)와 항상 일치시킨다. */
+export function viewLabel(fmt: Format, view: 'tree' | 'text' = 'tree'): string {
+  if (fmt === 'markdown') return '미리보기';
+  return view === 'text' ? '텍스트' : '트리';
 }
 
 export function formatDiagnosticLine(diags: Diagnostic[]): string {
@@ -130,6 +132,9 @@ export function mountApp(root: AppRoot): void {
       currentFormat = f;
       editor.setLanguage(f);
       refreshToolbarForFormat();
+      // 열린 OUTPUT의 컨트롤(뷰 전환·복사)·본문·진단을 새 포맷으로 동기화
+      // (setLanguage는 docChanged가 아니라 onEdit 재렌더가 타지 않는다)
+      if (!root.panel.hidden) renderPanelContent();
       persist();
     });
     segBtns.set(f, b);
@@ -263,7 +268,7 @@ export function mountApp(root: AppRoot): void {
   copyOutBtn.hidden = true;
   let lastOutput: string | undefined;
   copyOutBtn.addEventListener('click', () => {
-    if (lastOutput === undefined) return;
+    if (!lastOutput) return; // 빈 문자열 방어(노출 조건과 어긋나도 빈 복사 금지)
     const output = lastOutput;
     void (async () => {
       try {
@@ -372,7 +377,7 @@ export function mountApp(root: AppRoot): void {
 
   function refreshToolbarForFormat(): void {
     formatBtn.disabled = !canFormat(currentFormat); // markdown은 정렬 불가
-    viewBtn.textContent = viewLabel(currentFormat); // 트리 ↔ 미리보기
+    viewBtn.textContent = viewLabel(currentFormat, panelView); // 버튼이 열 뷰와 라벨 일치
     for (const [f, b] of segBtns) b.classList.toggle('active', f === currentFormat);
   }
 
@@ -517,6 +522,8 @@ export function mountApp(root: AppRoot): void {
     viewSeg.hidden = !canFormat(currentFormat); // markdown은 미리보기 전용 → 전환 숨김
     for (const [b, v] of viewBtns) b.classList.toggle('active', v === panelView);
     copyOutBtn.hidden = true;
+    lastOutput = undefined; // 텍스트 뷰가 아닌 렌더에서 낡은 정렬 결과가 복사되지 않게 초기화
+    viewBtn.textContent = viewLabel(currentFormat, panelView); // 뷰 전환 시 툴바 라벨 동기화
     if (currentFormat === 'markdown') {
       depthCtrl.hidden = true;
       const { html } = renderMarkdown(editor.getValue());
@@ -528,12 +535,13 @@ export function mountApp(root: AppRoot): void {
       // 텍스트 뷰: 입력은 그대로 두고 정렬 결과만 보여준다(원본 유지 정렬의 출력 창)
       depthCtrl.hidden = true;
       const r = format(editor.getValue(), currentFormat);
-      lastOutput = r.output;
-      if (r.output !== undefined) {
+      // 빈 문자열 출력(html/xml의 빈 입력)도 '결과 없음' — 빈 화면·빈 클립보드 복사 방지
+      lastOutput = r.output ? r.output : undefined;
+      if (lastOutput !== undefined) {
         copyOutBtn.hidden = false;
         const pre = document.createElement('pre');
         pre.className = 'output-text';
-        pre.append(highlightText(r.output, compileRules(currentRules)));
+        pre.append(highlightText(lastOutput, compileRules(currentRules)));
         panelBody.appendChild(pre);
       } else {
         const empty = document.createElement('div');
