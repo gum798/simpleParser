@@ -547,17 +547,28 @@ test('데스크톱에서는 출력 패널이 입력 오른쪽에 위치', async 
 
 // ── 원본 유지 정렬(비파괴 정렬): 스펙 docs/superpowers/specs/2026-07-28-keep-original-format-design.md ──
 
-test('원본 유지 정렬: 입력은 그대로, 정렬 결과는 OUTPUT 텍스트 뷰에', async ({ page }) => {
+test('원본 유지 정렬: 주변 텍스트는 남기고 JSON만 제자리에서 펼친다', async ({ page }) => {
   await page.goto('/');
   await pickFormat(page, 'json');
   await page.locator('.cm-content').click();
-  await page.keyboard.type('log body={"x":1}');
+  await page.keyboard.type('log body={"x":1} end');
   await clickBtn(page, '원본 유지');
   await clickFormat(page);
-  // 입력창은 원본 그대로(로그 접두어 유지)
+  // 로그 접두어·후미는 입력창에 그대로 남고
   await expect(page.locator('.cm-content')).toContainText('log body=');
-  // OUTPUT 패널이 열리고 텍스트 뷰에 정렬 결과
-  await expect(page.locator('#panel .output-text')).toContainText('"x": 1');
+  await expect(page.locator('.cm-content')).toContainText('end');
+  // JSON 블록만 그 자리에서 펼쳐진다
+  await expect(page.locator('.cm-content')).toContainText('"x": 1');
+});
+
+test('원본 유지여도 전체가 JSON이면 통짜 정렬', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('.cm-content')).toContainText('"a": 1');
 });
 
 test('원본 유지 토글은 새로고침 후에도 유지(localStorage)', async ({ page }) => {
@@ -606,8 +617,8 @@ test('텍스트 뷰의 [복사]는 정렬 결과를 복사한다', async ({ page
   await pickFormat(page, 'json');
   await page.locator('.cm-content').click();
   await page.keyboard.type('log body={"x":1}');
-  await clickBtn(page, '원본 유지');
-  await clickFormat(page);
+  await clickBtn(page, '트리');
+  await page.locator('#panel .view-btn[data-view="text"]').click();
   await page.locator('#panel .output-copy').click();
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain('"x": 1'); // 정렬 결과
@@ -631,8 +642,8 @@ test('패널이 열린 채 포맷을 바꾸면 OUTPUT 컨트롤·본문이 함�
   await pickFormat(page, 'json');
   await page.locator('.cm-content').click();
   await page.keyboard.type('log body={"x":1}');
-  await clickBtn(page, '원본 유지');
-  await clickFormat(page);
+  await clickBtn(page, '트리');
+  await page.locator('#panel .view-btn[data-view="text"]').click();
   await expect(page.locator('#panel .output-text')).toContainText('"x": 1');
   await page.waitForTimeout(600); // 디바운스 정착 후 전환(onEdit 레이스로 우연히 통과하지 않게)
   await pickFormat(page, 'markdown');
@@ -643,22 +654,22 @@ test('패널이 열린 채 포맷을 바꾸면 OUTPUT 컨트롤·본문이 함�
   await expect(page.locator('#panel .output-text')).toHaveCount(0);
 });
 
-test('HTML 빈 입력 + 원본 유지 정렬: 결과 없음 안내, [복사]는 숨김(빈 문자열 복사 방지)', async ({ page }) => {
+test('HTML 빈 입력의 텍스트 뷰: 결과 없음 안내, [복사]는 숨김(빈 문자열 복사 방지)', async ({ page }) => {
   await page.goto('/');
   await pickFormat(page, 'html');
-  await clickBtn(page, '원본 유지');
-  await clickFormat(page);
+  await clickBtn(page, '트리');
+  await page.locator('#panel .view-btn[data-view="text"]').click();
   await expect(page.locator('#panel .output-empty')).toBeVisible();
   await expect(page.locator('#panel .output-copy')).toBeHidden();
 });
 
-test('원본 유지 정렬 후 툴바 뷰 버튼 라벨은 [텍스트](라벨-동작 일치)', async ({ page }) => {
+test('텍스트 뷰로 전환하면 툴바 뷰 버튼 라벨도 [텍스트](라벨-동작 일치)', async ({ page }) => {
   await page.goto('/');
   await pickFormat(page, 'json');
   await page.locator('.cm-content').click();
   await page.keyboard.type('{"a":1}');
-  await clickBtn(page, '원본 유지');
-  await clickFormat(page);
+  await clickBtn(page, '트리');
+  await page.locator('#panel .view-btn[data-view="text"]').click();
   // 툴바 버튼이 다시 여는 뷰(텍스트)와 라벨이 일치해야 한다
   await expect(page.locator('#toolbar .btn', { hasText: /^텍스트$/ })).toBeVisible();
   // 헤더 세그먼트로 트리로 돌아가면 라벨도 [트리]로 복귀
@@ -677,8 +688,8 @@ test('텍스트 뷰에도 하이라이트 규칙 색이 적용된다', async ({ 
   await pickFormat(page, 'json');
   await page.locator('.cm-content').click();
   await page.keyboard.type('log body={"stage":"A"}');
-  await clickBtn(page, '원본 유지');
-  await clickFormat(page);
+  await clickBtn(page, '트리');
+  await page.locator('#panel .view-btn[data-view="text"]').click();
   const mark = page.locator('#panel .output-text span', { hasText: 'stage' }).first();
   await expect(mark).toBeVisible();
   await expect(mark).toHaveCSS('color', 'rgb(255, 0, 0)');

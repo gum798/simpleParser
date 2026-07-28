@@ -122,3 +122,51 @@ test('콤마 빠진(중첩 배열 포함) 단일 문서는 a를 버리지 않고
   expect(r.output).toContain('"a"'); // 내부 [2,3]만 추출하고 a를 버리면 안 됨
   expect(r.output).toContain('"b"');
 });
+
+// ── 제자리 정렬(원본 유지): 주변 텍스트는 그대로, JSON 블록만 펼침 ──
+
+test('formatJsonInPlace: 로그 접두어·후미를 남기고 JSON만 제자리에서 펼친다', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('log body={"x":1} end');
+  expect(r.output).toBe('log body={\n  "x": 1\n} end');
+  expect(r.faithful).toBe(false); // 내용(공백) 변경 → 자동 정렬 보류
+});
+
+test('formatJsonInPlace: 여러 블록도 각자 제자리에서 펼친다', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('a={"x":1} b={"y":2}');
+  expect(r.output).toBe('a={\n  "x": 1\n} b={\n  "y": 2\n}');
+});
+
+test('formatJsonInPlace: 랩 줄바꿈 낀 블록은 복구해 펼치고 경고를 남긴다', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('body={"a":"b\nc"} 뒤');
+  expect(r.output).toBe('body={\n  "a": "bc"\n} 뒤');
+  expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('줄바꿈'))).toBe(true);
+});
+
+test('formatJsonInPlace: 전체가 단일 JSON이면 통짜 정렬과 동일', async () => {
+  const { formatJsonInPlace, formatJson } = await import('../src/format/json');
+  expect(formatJsonInPlace('{"a":1}').output).toBe(formatJson('{"a":1}').output);
+});
+
+test('formatJsonInPlace: JSON이 없으면 기존 진단 경로 그대로', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('그냥 텍스트');
+  expect(r.output).toBeUndefined();
+  expect(r.diagnostics.length).toBeGreaterThan(0);
+});
+
+test('formatJsonInPlace: 관용 복구(내용 손실 위험)는 본문을 바꾸지 않고 진단만', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('{"a":1 "b":2}'); // 콤마 누락 단일 문서 → 원본 유지 중엔 보류
+  expect(r.output).toBeUndefined();
+  expect(r.diagnostics.length).toBeGreaterThan(0);
+});
+
+test('formatJsonInPlace: 중복 키 단일 문서는 병합하지 않고 보류', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('{"a":1,"a":2}');
+  expect(r.output).toBeUndefined();
+  expect(r.diagnostics.some((d) => d.message.includes('중복 키'))).toBe(true);
+});

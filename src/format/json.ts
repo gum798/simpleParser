@@ -127,6 +127,51 @@ export function formatJson(text: string): FormatResult {
 }
 
 /**
+ * 제자리 정렬(원본 유지 모드): 주변 텍스트(로그 접두어 등)는 한 글자도 지우지 않고,
+ * 박힌 JSON 블록만 그 자리에서 2칸 들여쓰기로 펼친다. 랩 줄바꿈이 낀 블록은 복구해 펼친다.
+ * 전체가 단일 JSON(주변 텍스트 없음)이거나 블록이 없으면 기존 formatJson과 동일하게 동작.
+ */
+export function formatJsonInPlace(text: string): FormatResult {
+  const r = resolveJson(text);
+  // 원본 유지 약속: 출력이 있으면 데이터 무손실이 보장된다.
+  if (r.kind === 'value' && hasDuplicateKeys(text)) {
+    // JSON.parse 병합으로 값이 사라지므로 보류
+    return {
+      diagnostics: [{ message: '중복 키가 있어 정렬을 보류했습니다(병합 시 값 손실)', severity: 'warning' }],
+      faithful: false,
+    };
+  }
+  if (r.kind === 'tolerant') {
+    // 관용 복구는 주석 제거 등 내용을 잃을 수 있으므로 본문은 두고 진단만 보여준다
+    return { diagnostics: r.diagnostics, faithful: false };
+  }
+  if (r.kind !== 'blocks') return formatJson(text); // 단일 JSON(랩 복구 포함) → 통짜 정렬과 동일
+  // 스팬은 서로 겹치지 않는 오름차순 — 원본 길이 = 복구본 길이 + 제거된 줄바꿈 수
+  const spans = extractJsonSpans(text);
+  let out = '';
+  let pos = 0;
+  let removedNewlines = 0;
+  for (const s of spans) {
+    const origLen = s.text.length + (s.removed?.length ?? 0);
+    out += text.slice(pos, s.start);
+    out += JSON.stringify(JSON.parse(s.text), null, 2);
+    pos = s.start + origLen;
+    removedNewlines += s.removed?.length ?? 0;
+  }
+  out += text.slice(pos);
+  const diagnostics: Diagnostic[] =
+    removedNewlines > 0
+      ? [
+          {
+            message: `문자열 안의 줄바꿈 ${removedNewlines}개를 제거해 복구했습니다(터미널 랩 복사 추정)`,
+            severity: 'warning',
+          },
+        ]
+      : [];
+  return { output: out, diagnostics, faithful: false }; // 블록 내부 공백 변경 → 자동 정렬 보류
+}
+
+/**
  * 문자열 리터럴 '안'의 raw 줄바꿈(\r, \n)을 제거한다. 터미널 폭에서 랩된 로그를 복사하면
  * 문자열 중간에 실제 줄바꿈이 끼는데, JSON 스펙상 제어문자는 불법이라 파싱이 통째로 깨진다.
  * 랩 줄바꿈은 표시용으로 삽입된 문자이므로 '제거'가 원문 복원이다(공백 치환은 ID·키를 오염시킴).
