@@ -544,3 +544,143 @@ test('데스크톱에서는 출력 패널이 입력 오른쪽에 위치', async 
   const output = (await page.locator('#panel').boundingBox())!;
   expect(output.x).toBeGreaterThan(input.x + input.width - 1); // 출력이 입력 오른쪽
 });
+
+// ── 원본 유지 정렬(비파괴 정렬): 스펙 docs/superpowers/specs/2026-07-28-keep-original-format-design.md ──
+
+test('원본 유지 정렬: 입력은 그대로, 정렬 결과는 OUTPUT 텍스트 뷰에', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"x":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  // 입력창은 원본 그대로(로그 접두어 유지)
+  await expect(page.locator('.cm-content')).toContainText('log body=');
+  // OUTPUT 패널이 열리고 텍스트 뷰에 정렬 결과
+  await expect(page.locator('#panel .output-text')).toContainText('"x": 1');
+});
+
+test('원본 유지 토글은 새로고침 후에도 유지(localStorage)', async ({ page }) => {
+  await page.goto('/');
+  const toggle = page.locator('#toolbar .btn', { hasText: /^원본 유지$/ });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('OUTPUT 패널에서 트리 ↔ 텍스트 뷰 전환', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await clickBtn(page, '트리');
+  await expect(page.locator('#panel .tree-node').first()).toBeVisible();
+  await page.locator('#panel .view-btn[data-view="text"]').click();
+  await expect(page.locator('#panel .output-text')).toContainText('"a": 1');
+  await page.locator('#panel .view-btn[data-view="tree"]').click();
+  await expect(page.locator('#panel .tree-node').first()).toBeVisible();
+});
+
+test('원본 유지 켠 상태: 붙여넣기 자동 정렬도 입력을 바꾸지 않는다', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await clickBtn(page, '원본 유지');
+  await page.locator('.cm-content').click();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '{"m":5,"n":6}');
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500); // 자동 정렬 유휴 콜백이 돌 시간
+  // 평소라면 자동 정렬로 공백이 생기지만('"m": 5'), 원본 유지 중엔 압축 원문 그대로
+  await expect(page.locator('.cm-content')).toContainText('{"m":5,"n":6}');
+  await expect(page.locator('.cm-content')).not.toContainText('"m": 5');
+});
+
+test('텍스트 뷰의 [복사]는 정렬 결과를 복사한다', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"x":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await page.locator('#panel .output-copy').click();
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip).toContain('"x": 1'); // 정렬 결과
+  expect(clip).not.toContain('log body'); // 입력 원문이 아니라
+});
+
+test('마크다운에서는 트리/텍스트 전환이 보이지 않는다(미리보기 전용)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'markdown');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('# 제목');
+  await clickBtn(page, '미리보기');
+  await expect(page.locator('#panel .markdown-body h1')).toBeVisible();
+  await expect(page.locator('#panel .view-seg')).toBeHidden();
+});
+
+// ── 리뷰 확정 결함 회귀 테스트(2026-07-28 적대적 리뷰) ──
+
+test('패널이 열린 채 포맷을 바꾸면 OUTPUT 컨트롤·본문이 함께 갱신된다', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"x":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('#panel .output-text')).toContainText('"x": 1');
+  await page.waitForTimeout(600); // 디바운스 정착 후 전환(onEdit 레이스로 우연히 통과하지 않게)
+  await pickFormat(page, 'markdown');
+  // markdown은 미리보기 전용: 뷰 전환·복사 숨김 + 본문은 미리보기로 교체(낡은 JSON 결과 잔류 금지)
+  await expect(page.locator('#panel .view-seg')).toBeHidden();
+  await expect(page.locator('#panel .output-copy')).toBeHidden();
+  await expect(page.locator('#panel .markdown-body')).toBeVisible();
+  await expect(page.locator('#panel .output-text')).toHaveCount(0);
+});
+
+test('HTML 빈 입력 + 원본 유지 정렬: 결과 없음 안내, [복사]는 숨김(빈 문자열 복사 방지)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'html');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('#panel .output-empty')).toBeVisible();
+  await expect(page.locator('#panel .output-copy')).toBeHidden();
+});
+
+test('원본 유지 정렬 후 툴바 뷰 버튼 라벨은 [텍스트](라벨-동작 일치)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  // 툴바 버튼이 다시 여는 뷰(텍스트)와 라벨이 일치해야 한다
+  await expect(page.locator('#toolbar .btn', { hasText: /^텍스트$/ })).toBeVisible();
+  // 헤더 세그먼트로 트리로 돌아가면 라벨도 [트리]로 복귀
+  await page.locator('#panel .view-btn[data-view="tree"]').click();
+  await expect(page.locator('#toolbar .btn', { hasText: /^트리$/ })).toBeVisible();
+});
+
+test('텍스트 뷰에도 하이라이트 규칙 색이 적용된다', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'simpleparser.highlightRules',
+      JSON.stringify([{ id: '1', name: 'x', regex: 'stage', enabled: true, textColor: '#ff0000', bgColor: '#ffff00' }]),
+    );
+  });
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log body={"stage":"A"}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  const mark = page.locator('#panel .output-text span', { hasText: 'stage' }).first();
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveCSS('color', 'rgb(255, 0, 0)');
+  await expect(mark).toHaveCSS('background-color', 'rgb(255, 255, 0)');
+});

@@ -55,3 +55,9 @@ test('임계값을 넘는 큰 입력은 자동 정렬 안 함(저부하)', () =>
   expect(shouldAutoFormat(big, 'json')).toBe(false);
 });
 
+
+test('뷰 라벨: 열릴 뷰와 일치(텍스트 뷰면 [텍스트], markdown은 항상 미리보기)', () => {
+  expect(viewLabel('json', 'text')).toBe('텍스트');
+  expect(viewLabel('json', 'tree')).toBe('트리');
+  expect(viewLabel('markdown', 'text')).toBe('미리보기');
+});

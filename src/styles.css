@@ -64,6 +64,9 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
   cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text); }
 .btn:hover:not(:disabled) { background: var(--hover); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 토글형 버튼(원본 유지): 눌림 상태를 세그먼트 활성과 같은 톤으로 */
+.btn[aria-pressed='true'] { background: var(--accent-weak); color: var(--accent-strong);
+  border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { background: #575ae8; }
 .btn.ok { color: var(--ok); border-color: var(--ok); }
@@ -88,6 +91,23 @@ body { margin: 0; display: flex; flex-direction: column; height: 100vh;
 .depth-btn:hover { background: var(--hover); color: var(--text); }
 .depth-val { min-width: 14px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
 .pane-body { flex: 1; overflow: auto; padding: 8px; }
+/* OUTPUT 헤더의 트리|텍스트 미니 세그먼트 + 텍스트 뷰 전용 복사 버튼 */
+.view-seg { display: inline-flex; margin-left: 10px; border: 1px solid var(--border);
+  border-radius: 6px; overflow: hidden; }
+.view-seg[hidden] { display: none; }
+.view-btn { font: inherit; font-size: 10.5px; padding: 1px 8px; border: none; background: none;
+  color: var(--muted); cursor: pointer; }
+.view-btn:hover { color: var(--text); }
+.view-btn.active { background: var(--accent-weak); color: var(--accent-strong); }
+.output-copy { margin-left: auto; font: inherit; font-size: 11px; padding: 1px 10px;
+  border-radius: 6px; border: 1px solid var(--border); background: none; color: var(--muted);
+  cursor: pointer; }
+.output-copy:hover { background: var(--hover); color: var(--text); }
+.output-copy[hidden] { display: none; }
+/* 텍스트 뷰(정렬 결과): 에디터와 같은 모노 타이포, 줄바꿈 보존 */
+.output-text { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-all; }
+.output-empty { color: var(--muted); font-size: 12.5px; }
 /* 입력 카드 헤더 우측의 클리어 ✕ — 본문 텍스트 위에 겹치지 않고, 터치에서도 안전(리뷰 반영) */
 .pane-clear { margin-left: auto; width: 20px; height: 20px; display: inline-flex;
   align-items: center; justify-content: center; border-radius: 5px; border: none; background: none;

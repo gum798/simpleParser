@@ -220,8 +220,9 @@ export function maxDepth(node: TreeNode): number {
   return deepest + 1;
 }
 
-/** 라벨 텍스트에 하이라이트 규칙을 적용한 프래그먼트(겹치는 매칭은 앞선 것 우선). */
-function highlightLabel(text: string, compiled: CompiledRule[]): DocumentFragment | string {
+/** 텍스트에 하이라이트 규칙을 적용한 프래그먼트(겹치는 매칭은 앞선 것 우선).
+ *  트리 라벨과 OUTPUT 텍스트 뷰가 같은 규칙 색을 쓰도록 공유한다. */
+export function highlightText(text: string, compiled: CompiledRule[]): DocumentFragment | string {
   if (!compiled.some((c) => c.re)) return text;
   const spans = findHighlights(text, compiled).sort((a, b) => a.from - b.from || b.to - a.to);
   if (spans.length === 0) return text;
@@ -284,10 +285,10 @@ function renderNode(
       childrenEl.style.display = hidden ? '' : 'none';
       toggle.textContent = hidden ? '▾' : '▸';
     });
-    label.append(highlightLabel(`${keyPart}${typeLabel(node)}`, rules));
+    label.append(highlightText(`${keyPart}${typeLabel(node)}`, rules));
     el.append(toggle, label, childrenEl);
   } else {
-    label.append(highlightLabel(`${keyPart}${node.value ?? typeLabel(node)}`, rules));
+    label.append(highlightText(`${keyPart}${node.value ?? typeLabel(node)}`, rules));
     el.append(label);
   }
   return el;

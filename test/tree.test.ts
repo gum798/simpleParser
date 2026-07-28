@@ -173,3 +173,20 @@ test('renderTree(rules): 규칙 없으면 span 없이 순수 텍스트', async (
   const el = renderTree(root, () => {});
   expect(el.querySelectorAll('.tree-label span').length).toBe(0);
 });
+
+test('highlightText: 규칙 매칭 구간에 색 span, 규칙 없으면 순수 문자열', async () => {
+  const { highlightText } = await import('../src/tree');
+  const { compileRules } = await import('../src/highlight/matcher');
+  const compiled = compileRules([
+    { id: '1', name: '', regex: 'stage', enabled: true, textColor: '#ff0000', bgColor: '#ffff00' },
+  ]);
+  const frag = highlightText('{"stage":"A"}\n{"stage":"B"}', compiled);
+  const div = document.createElement('div');
+  div.append(frag);
+  const spans = div.querySelectorAll('span');
+  expect(spans.length).toBe(2); // 두 줄의 stage 모두
+  expect(spans[0].textContent).toBe('stage');
+  expect(spans[0].getAttribute('style')).toContain('background-color:#ffff00');
+  expect(div.textContent).toBe('{"stage":"A"}\n{"stage":"B"}'); // 매칭 밖 텍스트 보존
+  expect(highlightText('abc', [])).toBe('abc'); // 규칙 없음 → 문자열 그대로
+});
