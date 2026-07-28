@@ -695,3 +695,26 @@ test('텍스트 뷰에도 하이라이트 규칙 색이 적용된다', async ({ 
   await expect(mark).toHaveCSS('color', 'rgb(255, 0, 0)');
   await expect(mark).toHaveCSS('background-color', 'rgb(255, 255, 0)');
 });
+
+test('원본 유지: 중복 키 블록도 값을 잃지 않는다(둘 다 유지)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('log {"a":1,"a":2} x');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('.cm-content')).toContainText('"a": 1');
+  await expect(page.locator('.cm-content')).toContainText('"a": 2');
+  await expect(page.locator('.cm-content')).toContainText('log');
+});
+
+test('원본 유지: 후행 콤마(JSONC) 입력은 본문 그대로 + 보류 사유 표시(침묵 금지)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1,}');
+  await clickBtn(page, '원본 유지');
+  await clickFormat(page);
+  await expect(page.locator('.cm-content')).toContainText('{"a":1,}'); // 본문 무변경
+  await expect(page.locator('#status')).toContainText('보류'); // 이유가 상태줄에 남는다
+});

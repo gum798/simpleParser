@@ -421,11 +421,25 @@ export function mountApp(root: AppRoot): void {
     if (keepOriginal) {
       if (!opts?.safeOnly) {
         const r = formatKeepOriginal(input, currentFormat);
+        const errs = (ds: Diagnostic[]): number => ds.filter((d) => d.severity === 'error').length;
         if (r.output !== undefined && r.output !== input) {
+          // 교체 후 본문 기준으로 재검사: 새 에러가 생기면 보류(통짜 경로와 동일한 안전 정책)
+          const after = format(r.output, currentFormat);
+          if (errs(after.diagnostics) > errs(r.diagnostics)) {
+            showToast('정렬을 보류했습니다(원문 보존)');
+            applyDiagnostics(r.diagnostics);
+            return;
+          }
           editor.setValue(r.output);
           editor.scrollToTop();
+          // 위치 없는 변환 경고(랩 복구 등)는 유지하고 토스트로도 알림 — 이후 재계산에 덮여도 고지가 남게
+          const notices = r.diagnostics.filter((d) => d.offset === undefined && d.severity === 'warning');
+          if (notices.length > 0) showToast(notices[0].message);
+          applyDiagnostics([...notices, ...after.diagnostics]); // 교체된 새 본문에 맞는 진단(오프셋 일치)
+        } else {
+          if (r.output === undefined) showToast('정렬을 보류했습니다(원문 보존)');
+          applyDiagnostics(r.diagnostics);
         }
-        applyDiagnostics(r.diagnostics);
       }
       return;
     }

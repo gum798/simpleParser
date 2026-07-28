@@ -164,9 +164,37 @@ test('formatJsonInPlace: 관용 복구(내용 손실 위험)는 본문을 바꾸
   expect(r.diagnostics.length).toBeGreaterThan(0);
 });
 
-test('formatJsonInPlace: 중복 키 단일 문서는 병합하지 않고 보류', async () => {
+test('formatJsonInPlace: 중복 키는 병합하지 않고 둘 다 그대로 유지(토큰 보존)', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
-  const r = formatJsonInPlace('{"a":1,"a":2}');
+  const whole = formatJsonInPlace('{"a":1,"a":2}');
+  expect(whole.output).toContain('"a": 1');
+  expect(whole.output).toContain('"a": 2');
+  const block = formatJsonInPlace('log {"a":1,"a":2} x'); // 주 시나리오(로그 속 블록)도 동일
+  expect(block.output).toContain('"a": 1');
+  expect(block.output).toContain('"a": 2');
+});
+
+test('formatJsonInPlace: 큰 정수·고정밀 소수·1.0·유니코드 이스케이프를 원문 그대로 보존', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace('x={"id":12345678901234567890,"f":0.30000000000000004,"n":1.0,"e":"\\ud83d\\ude00"}');
+  expect(r.output).toContain('"id": 12345678901234567890'); // JSON.parse 왕복이면 ...567168로 변형됨
+  expect(r.output).toContain('"f": 0.30000000000000004');
+  expect(r.output).toContain('"n": 1.0'); // 1로 정규화 금지
+  expect(r.output).toContain('"e": "\\ud83d\\ude00"'); // 이스케이프 표기 유지
+});
+
+test('formatJsonInPlace: JSONC(후행 콤마·주석)는 보류하되 이유를 경고로 알린다', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  for (const src of ['{"a":1,}', '{"a":1 /*c*/}']) {
+    const r = formatJsonInPlace(src);
+    expect(r.output).toBeUndefined();
+    expect(r.diagnostics.length).toBeGreaterThan(0); // 침묵 금지 — 상태줄에 보류 사유 표시
+  }
+});
+
+test('formatKeepOriginal: 깨진 XML은 관용 재작성(태그 보정) 대신 보류 + 진단', async () => {
+  const { formatKeepOriginal } = await import('../src/format/index');
+  const r = formatKeepOriginal('<a><b></a>', 'xml'); // 관용 파서가 태그를 지어내는 입력
   expect(r.output).toBeUndefined();
-  expect(r.diagnostics.some((d) => d.message.includes('중복 키'))).toBe(true);
+  expect(r.diagnostics.length).toBeGreaterThan(0);
 });

@@ -134,19 +134,28 @@ export function formatJson(text: string): FormatResult {
 export function formatJsonInPlace(text: string): FormatResult {
   const r = resolveJson(text);
   // 원본 유지 약속: 출력이 있으면 데이터 무손실이 보장된다.
-  if (r.kind === 'value' && hasDuplicateKeys(text)) {
-    // JSON.parse 병합으로 값이 사라지므로 보류
+  // JSON.parse→stringify 왕복은 중복 키 병합·큰 정수 절삭·1.0→1·이스케이프 정규화로
+  // 값을 바꾸므로 쓰지 않고, 토큰을 그대로 보존하는 프린터로 공백만 다시 깐다.
+  if (r.kind === 'value') {
+    return { output: prettyPrintJsonTokens(text), diagnostics: [], faithful: false };
+  }
+  if (r.kind === 'repaired') {
+    const rep = repairJsonStringNewlines(text);
     return {
-      diagnostics: [{ message: '중복 키가 있어 정렬을 보류했습니다(병합 시 값 손실)', severity: 'warning' }],
+      output: prettyPrintJsonTokens(rep.text),
+      diagnostics: [wrapRepairWarning(rep.removed.length)],
       faithful: false,
     };
   }
   if (r.kind === 'tolerant') {
-    // 관용 복구는 주석 제거 등 내용을 잃을 수 있으므로 본문은 두고 진단만 보여준다
-    return { diagnostics: r.diagnostics, faithful: false };
+    // 관용 복구는 주석·후행 콤마 제거 등 내용을 잃을 수 있으므로 본문은 두고 보류 사유만 알린다.
+    // (JSONC로는 유효해 파서 진단이 0건인 입력도 침묵하지 않도록 경고를 합성)
+    const diagnostics: Diagnostic[] = r.diagnostics.length
+      ? r.diagnostics
+      : [{ message: '주석/후행 콤마가 있어 정렬을 보류했습니다(제거 시 내용 손실)', severity: 'warning' }];
+    return { diagnostics, faithful: false };
   }
-  if (r.kind !== 'blocks') return formatJson(text); // 단일 JSON(랩 복구 포함) → 통짜 정렬과 동일
-  // 스팬은 서로 겹치지 않는 오름차순 — 원본 길이 = 복구본 길이 + 제거된 줄바꿈 수
+  // blocks: 스팬은 서로 겹치지 않는 오름차순 — 원본 길이 = 복구본 길이 + 제거된 줄바꿈 수
   const spans = extractJsonSpans(text);
   let out = '';
   let pos = 0;
@@ -154,21 +163,70 @@ export function formatJsonInPlace(text: string): FormatResult {
   for (const s of spans) {
     const origLen = s.text.length + (s.removed?.length ?? 0);
     out += text.slice(pos, s.start);
-    out += JSON.stringify(JSON.parse(s.text), null, 2);
+    out += prettyPrintJsonTokens(s.text);
     pos = s.start + origLen;
     removedNewlines += s.removed?.length ?? 0;
   }
   out += text.slice(pos);
-  const diagnostics: Diagnostic[] =
-    removedNewlines > 0
-      ? [
-          {
-            message: `문자열 안의 줄바꿈 ${removedNewlines}개를 제거해 복구했습니다(터미널 랩 복사 추정)`,
-            severity: 'warning',
-          },
-        ]
-      : [];
+  const diagnostics: Diagnostic[] = removedNewlines > 0 ? [wrapRepairWarning(removedNewlines)] : [];
   return { output: out, diagnostics, faithful: false }; // 블록 내부 공백 변경 → 자동 정렬 보류
+}
+
+function wrapRepairWarning(count: number): Diagnostic {
+  return {
+    message: `문자열 안의 줄바꿈 ${count}개를 제거해 복구했습니다(터미널 랩 복사 추정)`,
+    severity: 'warning',
+  };
+}
+
+/**
+ * 유효한 JSON 텍스트를 2칸 들여쓰기로 다시 깐다 — 문자열·숫자·리터럴 토큰은 바이트
+ * 그대로 보존한다(JSON.stringify와 달리 중복 키·큰 정수·1.0·유니코드 이스케이프 무변형).
+ * 구조 밖 공백만 버리고 새로 배치하므로 출력은 항상 입력과 값이 동일하다.
+ */
+export function prettyPrintJsonTokens(src: string): string {
+  let out = '';
+  let depth = 0;
+  let inStr = false;
+  let escaped = false;
+  const indent = (): string => '  '.repeat(depth);
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (inStr) {
+      out += c;
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+      out += c;
+    } else if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      continue; // 구조 밖 공백은 버리고 새로 깐다
+    } else if (c === '{' || c === '[') {
+      let j = i + 1; // 빈 객체/배열은 {}·[]로 붙여 쓴다(JSON.stringify와 동일)
+      while (j < src.length && /\s/.test(src[j])) j++;
+      if (src[j] === (c === '{' ? '}' : ']')) {
+        out += c + src[j];
+        i = j;
+      } else {
+        out += c;
+        depth++;
+        out += '\n' + indent();
+      }
+    } else if (c === '}' || c === ']') {
+      depth--;
+      out += '\n' + indent() + c;
+    } else if (c === ',') {
+      out += ',\n' + indent();
+    } else if (c === ':') {
+      out += ': ';
+    } else {
+      out += c; // 숫자·true/false/null 리터럴은 그대로
+    }
+  }
+  return out;
 }
 
 /**

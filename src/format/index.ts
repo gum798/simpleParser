@@ -21,8 +21,12 @@ export function format(text: string, fmt: Format): FormatResult {
 
 /**
  * 원본 유지 정렬: json은 주변 텍스트를 지키는 제자리 정렬(데이터 손실 위험 결과는 보류),
- * 그 외 포맷은 추출 개념이 없어 통짜 정렬과 동일.
+ * 그 외 포맷은 추출 개념이 없어 통짜 정렬과 동일 — 단, 깨진 문서의 관용 재작성
+ * (없는 태그 보정 등)은 내용을 바꿀 수 있으므로 본문은 두고 진단만 보여준다.
  */
 export function formatKeepOriginal(text: string, fmt: Format): FormatResult {
-  return fmt === 'json' ? formatJsonInPlace(text) : format(text, fmt);
+  if (fmt === 'json') return formatJsonInPlace(text);
+  const r = format(text, fmt);
+  if (r.diagnostics.some((d) => d.severity === 'error')) return { diagnostics: r.diagnostics, faithful: false };
+  return r;
 }
