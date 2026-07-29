@@ -217,7 +217,14 @@ test('formatJsonInPlace: 잘린 라인은 원문 그대로 두고 그 뒤 블록
   expect(r.output).toContain('cut…'); // 잘린 라인은 손대지 않음
 });
 
-test('블록 밖 홀수 따옴표는 줄 끝에서 리셋 — 다음 줄 블록을 삼키지 않는다', () => {
-  const text = 'warn said "unclosed quote\nb={"y":2}';
-  expect(extractJsonBlocks(text)).toEqual(['{"y":2}']);
+test('줄바꿈을 걸쳐 닫히는 인용문(랩된 로그 텍스트) 뒤의 블록도 추출한다', () => {
+  // 리뷰 확정: 줄끝 문자열 리셋이 이 케이스를 회귀시켰음 — main 동작(줄바꿈 허용) 복원
+  expect(extractJsonBlocks('msg="request failed for\nuser bob" body={"a":1}')).toEqual(['{"a":1}']);
+});
+
+test('전체가 하나의 잘린 JSON 문서면 조각 추출이 아니라 관용 복구(키·진단 유지)', () => {
+  const doc = '{\n  "openapi": "3.1.0",\n  "info": {"title": "T", "version": "1"},\n  "desc": "cut…';
+  const r = formatJson(doc);
+  expect(r.output).toContain('"openapi"'); // 최상위 키 유지 — 내부 조각으로 대체 금지
+  expect(r.diagnostics.length).toBeGreaterThan(0); // 잘렸다는 진단 유지
 });

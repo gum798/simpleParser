@@ -4,7 +4,7 @@ import { findHighlights, markStyle, type CompiledRule } from './highlight/matche
 import type { Diagnostic, Format, TreeNode, TreeResult } from './types';
 import {
   extractJsonSpans,
-  topLevelSpans,
+  scanTopLevel,
   parseJsonTolerant,
   repairJsonStringNewlines,
   mapRepairedOffset,
@@ -63,13 +63,16 @@ function jsonTree(text: string): TreeResult {
     }
   }
 
-  const spans = topLevelSpans(text);
+  const { spans, recoverFrom } = scanTopLevel(text, 0);
   const isWholeSingleSpan =
     spans.length === 1 &&
     text.slice(0, spans[0][0]).trim() === '' &&
     text.slice(spans[0][1] + 1).trim() === '';
+  // 전체가 하나의 잘린(닫히지 않은) 문서면 조각 추출이 아니라 관용 전체 트리(resolveJson과 동일 라우팅)
+  const isTruncatedWholeDoc =
+    spans.length === 0 && recoverFrom !== null && text.slice(0, recoverFrom).trim() === '';
 
-  if (validWhole || isWholeSingleSpan) {
+  if (validWhole || isWholeSingleSpan || isTruncatedWholeDoc) {
     const node = parseTree(text, undefined, { allowTrailingComma: true });
     if (!node) return fromValue(parseJsonTolerant(text));
     const root = jsoncToTree(node, undefined, 0);

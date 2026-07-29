@@ -77,14 +77,16 @@ export function resolveJson(text: string): JsonResolution {
       /* 랩 복구로도 안 됨 → 추출/관용 복구로 */
     }
   }
-  const spans = topLevelSpans(text);
+  const { spans, recoverFrom } = scanTopLevel(text, 0);
   // 전체가 (주변 공백 외엔) 하나의 괄호 구조면 '깨진 단일 문서'로 보고 추출하지 않는다.
   // (예: `{"a":1 "b":[2,3]}` 의 내부 `[2,3]`만 뽑아 a와 진단을 버리는 일 방지)
   const isWholeSingleSpan =
     spans.length === 1 &&
     text.slice(0, spans[0][0]).trim() === '' &&
     text.slice(spans[0][1] + 1).trim() === '';
-  if (!isWholeSingleSpan) {
+  const isTruncatedWholeDoc =
+    spans.length === 0 && recoverFrom !== null && text.slice(0, recoverFrom).trim() === '';
+  if (!isWholeSingleSpan && !isTruncatedWholeDoc) {
     const blocks = extractJsonBlocks(text);
     if (blocks.length > 0) {
       return { kind: 'blocks', values: blocks.map((b) => JSON.parse(b) as unknown) };
@@ -330,11 +332,11 @@ export function topLevelSpans(text: string): Array<[number, number]> {
 /**
  * topLevelSpans의 내부 구현 + 복구 지점 보고. recoverFrom은 문서 끝까지 닫히지 않은
  * 최상위 블록(로거가 자른 거대 JSON 등) 또는 열린 문자열의 시작 오프셋 — 호출자는 그
- * 줄을 건너뛰고 재탐색해 이후 블록을 살릴 수 있다. 블록 밖(깊이 0) 문자열 상태는 줄
- * 끝에서 리셋한다: 로그 텍스트의 홀수 따옴표가 다음 줄들을 삼키지 않게(랩 줄바꿈이
- * 낀 문자열은 블록 '안'에서만 의미가 있으므로 스팬 검출에는 영향 없음).
+ * 줄을 건너뛰고 재탐색해 이후 블록을 살릴 수 있다. 문자열의 줄바꿈은 깊이와 무관하게
+ * 허용한다(터미널 랩 복사로 인용문이 줄을 넘는 경우가 실제로 있음 — 줄끝 리셋은
+ * 그 뒤 블록을 삼키는 회귀를 만들어 리뷰에서 제거됨).
  */
-function scanTopLevel(
+export function scanTopLevel(
   text: string,
   from: number,
 ): { spans: Array<[number, number]>; recoverFrom: number | null } {
@@ -347,11 +349,6 @@ function scanTopLevel(
   for (let i = from; i < text.length; i++) {
     const c = text[i];
     if (inStr) {
-      if (c === '\n' && stack.length === 0) {
-        inStr = false; // 블록 밖 문자열은 줄을 넘길 수 없다(로그 텍스트의 따옴표)
-        escaped = false;
-        continue;
-      }
       if (escaped) escaped = false;
       else if (c === '\\') escaped = true;
       else if (c === '"') inStr = false;
