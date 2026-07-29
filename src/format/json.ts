@@ -51,7 +51,7 @@ export function parseJsonTolerant(text: string): { value: unknown; diagnostics: 
 export type JsonResolution =
   | { kind: 'value'; value: unknown } // 전체가 유효한 단일 JSON
   | { kind: 'repaired'; value: unknown; removedNewlines: number } // 문자열 안 랩 줄바꿈 제거로 복구된 단일 JSON
-  | { kind: 'blocks'; values: unknown[] } // 텍스트에서 추출한 JSON 블록들
+  | { kind: 'blocks'; values: unknown[]; completedBlocks?: number } // 텍스트에서 추출한 JSON 블록들(보충 복구 수 포함)
   | { kind: 'tolerant'; value: unknown; diagnostics: Diagnostic[] }; // 깨진 단일 문서의 관용 복구
 
 /**
@@ -87,9 +87,13 @@ export function resolveJson(text: string): JsonResolution {
   const isTruncatedWholeDoc =
     spans.length === 0 && recoverFrom !== null && text.slice(0, recoverFrom).trim() === '';
   if (!isWholeSingleSpan && !isTruncatedWholeDoc) {
-    const blocks = extractJsonBlocks(text);
-    if (blocks.length > 0) {
-      return { kind: 'blocks', values: blocks.map((b) => JSON.parse(b) as unknown) };
+    const blockSpans = extractJsonSpans(text);
+    if (blockSpans.length > 0) {
+      return {
+        kind: 'blocks',
+        values: blockSpans.map((b) => JSON.parse(b.text) as unknown),
+        completedBlocks: blockSpans.filter((b) => b.appended).length,
+      };
     }
   }
   const { value, diagnostics } = parseJsonTolerant(text);
@@ -118,9 +122,17 @@ export function formatJson(text: string): FormatResult {
   }
   if (r.kind === 'blocks') {
     // 로그 등에서 추출 → 주변 텍스트를 버리므로 자동 정렬엔 부적합(수동 [정렬] 전용)
+    const diagnostics: Diagnostic[] = r.completedBlocks
+      ? [
+          {
+            message: `잘린 JSON 블록 ${r.completedBlocks}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)`,
+            severity: 'warning',
+          },
+        ]
+      : [];
     return {
       output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'),
-      diagnostics: [],
+      diagnostics,
       faithful: false,
     };
   }
@@ -162,15 +174,26 @@ export function formatJsonInPlace(text: string): FormatResult {
   let out = '';
   let pos = 0;
   let removedNewlines = 0;
+  let keptTruncated = 0;
   for (const s of spans) {
-    const origLen = s.text.length + (s.removed?.length ?? 0);
+    if (s.appended) {
+      keptTruncated++; // 보충 복구 블록은 원문 유지 — 닫는 괄호를 지어내 넣지 않는다
+      continue;
+    }
+    const origLen = s.origLen ?? s.text.length + (s.removed?.length ?? 0);
     out += text.slice(pos, s.start);
     out += prettyPrintJsonTokens(s.text);
     pos = s.start + origLen;
     removedNewlines += s.removed?.length ?? 0;
   }
   out += text.slice(pos);
-  const diagnostics: Diagnostic[] = removedNewlines > 0 ? [wrapRepairWarning(removedNewlines)] : [];
+  const diagnostics: Diagnostic[] = [];
+  if (removedNewlines > 0) diagnostics.push(wrapRepairWarning(removedNewlines));
+  if (keptTruncated > 0)
+    diagnostics.push({
+      message: `잘린 JSON 블록 ${keptTruncated}개는 원문 그대로 두었습니다(로거 절단 추정)`,
+      severity: 'warning',
+    });
   return { output: out, diagnostics, faithful: false }; // 블록 내부 공백 변경 → 자동 정렬 보류
 }
 
@@ -277,6 +300,61 @@ function parsesAsJson(s: string): boolean {
 }
 
 /**
+ * 잘린(닫히지 않은) JSON 조각을 유효하게 보충한다: 꼬리의 불완전 토큰(`,`·`"key":`·
+ * 반쪽 이스케이프 등)을 최소한으로 다듬고, 열린 문자열을 닫고, 스택에 남은 닫는 괄호를
+ * 붙인다. 로거가 길이 제한으로 자른 응답 본문을 '있는 데까지' 살리기 위한 것.
+ * 빈 껍데기({}·[])만 남으면 노이즈라 null.
+ */
+export function completeTruncatedJson(
+  region: string,
+): { text: string; appended: number; trimmed: number } | null {
+  const MAX_TRIM = 256; // 꼬리를 걷어낼 수 있는 상한(키 문자열 + 구두점이면 충분)
+  const cp = Math.max(0, region.length - MAX_TRIM);
+  const stack: string[] = [];
+  let inStr = false;
+  let escaped = false;
+  const step = (c: string): void => {
+    if (inStr) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inStr = false;
+      return;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') stack.push('}');
+    else if (c === '[') stack.push(']');
+    else if (c === '}' || c === ']') {
+      if (stack[stack.length - 1] === c) stack.pop();
+      else stack.length = 0; // 괄호 불일치 → 보충 불가 신호(closers가 비게 됨)
+    }
+  };
+  let i = 0;
+  for (; i < cp; i++) step(region[i]);
+  // 체크포인트 이후 꼬리 위치별 상태를 기록해 두고, 뒤에서부터 자를 지점을 찾는다
+  const states: Array<{ closers: string; inStr: boolean; escaped: boolean }> = [
+    { closers: stack.slice().reverse().join(''), inStr, escaped },
+  ];
+  for (; i < region.length; i++) {
+    step(region[i]);
+    states.push({ closers: stack.slice().reverse().join(''), inStr, escaped });
+  }
+  for (let trim = 0; trim < states.length; trim++) {
+    const st = states[states.length - 1 - trim];
+    if (st.escaped || st.closers.length === 0) continue;
+    const cut = region.length - trim;
+    const cand = region.slice(0, cut) + (st.inStr ? '"' : '') + st.closers;
+    if (!parsesAsJson(cand)) continue;
+    const v = JSON.parse(cand) as unknown;
+    const nonEmpty = Array.isArray(v)
+      ? v.length > 0
+      : v !== null && typeof v === 'object' && Object.keys(v as object).length > 0;
+    if (!nonEmpty) return null;
+    return { text: cand, appended: cand.length - cut, trimmed: trim };
+  }
+  return null;
+}
+
+/**
  * 텍스트에서 유효한 JSON 객체/배열 블록을 모두 추출한다(O(n) 단일 패스).
  * 문자열·이스케이프를 인식하고, 균형은 맞지만 JSON이 아닌 구간은 먼저 랩 줄바꿈 복구를
  * 시도한 뒤, 그래도 안 되면 내부를 다시 훑어 중첩된 유효 JSON을 찾는다.
@@ -284,13 +362,17 @@ function parsesAsJson(s: string): boolean {
  */
 /** 블록 텍스트와 그 절대 시작 오프셋을 함께 추출한다(중첩 복구 시 base로 절대 위치 유지).
  *  removed가 있으면 text는 복구본이고, removed는 블록 시작 기준 상대 오프셋이다. */
-export function extractJsonSpans(
-  text: string,
-  base = 0,
-  depth = 0,
-): Array<{ text: string; start: number; removed?: number[] }> {
+export interface JsonSpan {
+  text: string; // 스팬의 (필요시 복구/보충된) JSON 텍스트
+  start: number; // 원본 절대 시작 오프셋
+  removed?: number[]; // 랩 줄바꿈 복구 시 제거한 스팬 상대 오프셋들
+  origLen?: number; // 원본 구간 길이(보충 복구 스팬용 — text 길이와 다름)
+  appended?: number; // 잘린 블록 보충 시 덧붙인 문자 수(> 0이면 보충 복구 스팬)
+}
+
+export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] {
   if (depth > 40) return [];
-  const out: Array<{ text: string; start: number; removed?: number[] }> = [];
+  const out: JsonSpan[] = [];
   let from = 0;
   for (;;) {
     const { spans, recoverFrom } = scanTopLevel(text, from);
@@ -311,6 +393,20 @@ export function extractJsonSpans(
     // 로거가 잘라버린(끝까지 닫히지 않는) 블록/문자열: 그 줄만 건너뛰고 다음 줄부터
     // 새 상태로 재탐색 — 잘린 한 줄이 이후 문서 전체를 삼키지 않게 한다(from은 단조 증가 → 종료 보장).
     const nl = text.indexOf('\n', recoverFrom);
+    const regionEnd = nl === -1 ? text.length : nl;
+    // 잘린 블록 자체도 살린다: 닫는 괄호를 보충해 유효해지면 '보충 복구' 스팬으로 추가.
+    // (원본 유지 정렬은 appended 표시를 보고 이 블록을 건너뛴다 — 괄호를 지어내지 않기 위해)
+    if (text[recoverFrom] === '{' || text[recoverFrom] === '[') {
+      const done = completeTruncatedJson(text.slice(recoverFrom, regionEnd));
+      if (done) {
+        out.push({
+          text: done.text,
+          start: base + recoverFrom,
+          origLen: regionEnd - recoverFrom,
+          appended: done.appended,
+        });
+      }
+    }
     if (nl === -1) break;
     from = nl + 1;
   }

@@ -197,3 +197,21 @@ test('전체가 하나의 잘린 JSON 문서면 트리도 조각 배열이 아�
   expect(r.root?.type).toBe('object');
   expect(r.root?.children?.map((c) => c.key)).toContain('openapi');
 });
+
+test('잘린 거대 JSON 라인도 보충 복구 트리로 표시(pos는 원본 범위 안)', () => {
+  const text =
+    'head line\n' +
+    'x body={"openapi":"3.1.0","info":{"title":"T","desc":"cut…(+40583자)\n' +
+    'tail line';
+  const r = buildTree(text, 'json');
+  expect(r.root?.type).toBe('object');
+  expect(r.root?.children?.map((c) => c.key)).toContain('openapi');
+  const walk = (n: NonNullable<typeof r.root>): void => {
+    if (n.pos) {
+      expect(n.pos.from).toBeGreaterThanOrEqual(0);
+      expect(n.pos.to).toBeLessThanOrEqual(text.length); // 보충한 괄호가 원본 밖 좌표를 만들지 않음
+    }
+    n.children?.forEach(walk);
+  };
+  walk(r.root!);
+});

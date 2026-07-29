@@ -228,3 +228,47 @@ test('전체가 하나의 잘린 JSON 문서면 조각 추출이 아니라 관�
   expect(r.output).toContain('"openapi"'); // 최상위 키 유지 — 내부 조각으로 대체 금지
   expect(r.diagnostics.length).toBeGreaterThan(0); // 잘렸다는 진단 유지
 });
+
+// ── 잘린 블록 보충 복구: 닫는 괄호를 보충해 '있는 부분까지' 살린다 ──
+
+test('completeTruncatedJson: 문자열 중간에서 잘린 JSON을 닫아 유효하게 만든다', async () => {
+  const { completeTruncatedJson } = await import('../src/format/json');
+  const done = completeTruncatedJson('{"a":1,"info":{"title":"T","desc":"cut here…(+40583자)');
+  expect(done).not.toBeNull();
+  const v = JSON.parse(done!.text) as { a: number; info: { title: string; desc: string } };
+  expect(v.a).toBe(1);
+  expect(v.info.title).toBe('T');
+  expect(v.info.desc).toContain('cut here…(+40583자)'); // 잘린 지점까지의 내용 보존
+});
+
+test('completeTruncatedJson: 콤마/키 중간에서 잘려도 뒤를 다듬어 복구', async () => {
+  const { completeTruncatedJson } = await import('../src/format/json');
+  expect(JSON.parse(completeTruncatedJson('{"a":1,')!.text)).toEqual({ a: 1 });
+  expect(JSON.parse(completeTruncatedJson('{"a":1,"veryLongKeyName":')!.text)).toEqual({ a: 1 });
+  expect(completeTruncatedJson('{')).toBeNull(); // 빈 껍데기는 노이즈 — 보충 안 함
+});
+
+test('로거가 자른 거대 JSON 라인 자체도 보충 복구로 추출된다(뒤 내용이 없어도)', () => {
+  const log =
+    'request_end method=GET path=/openapi.json status=200 elapsed_ms=33\n' +
+    'x response_body path=/openapi.json status=200 body={"openapi":"3.1.0","info":{"title":"DTHub Agent Local","version":"0.1.0"},"paths":{"/health":{"get":{"operationId":"parse_task_definition_internal_oi_sim_parse_…(+40583자)\n' +
+    'y [DEBUG] Using selector: KqueueSelector\n' +
+    'z _startup_app llm routed via SKAX AI Hub chat_model=';
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.length).toBe(1);
+  const v = JSON.parse(blocks[0]) as { openapi: string; info: { title: string } };
+  expect(v.openapi).toBe('3.1.0');
+  expect(v.info.title).toBe('DTHub Agent Local');
+  const r = formatJson(log);
+  expect(r.output).toContain('"openapi": "3.1.0"'); // 정렬 결과에 잘린 문서의 앞부분이 나온다
+  expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('보충'))).toBe(true);
+});
+
+test('보충 복구 블록은 원본 유지(제자리) 정렬에서 원문 그대로 + 안내', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log = 'x body={"a":{"b":"cut…\ny body={"ok":1}';
+  const r = formatJsonInPlace(log);
+  expect(r.output).toContain('"ok": 1'); // 온전한 블록은 정렬
+  expect(r.output).toContain('{"a":{"b":"cut…'); // 잘린 블록은 원문 유지(닫는 괄호를 지어내지 않음)
+  expect(r.diagnostics.some((d) => d.message.includes('잘린'))).toBe(true);
+});

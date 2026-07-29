@@ -86,7 +86,9 @@ function jsonTree(text: string): TreeResult {
   const nodes = blocks
     .map((b) => {
       const n = parseTree(b.text, undefined, { allowTrailingComma: true });
-      return n ? jsoncToTree(n, undefined, b.start, b.removed) : null;
+      // 보충 복구 블록: 덧붙인 닫는 괄호가 원본 밖 좌표를 만들지 않게 pos 상한을 건다
+      const cap = b.appended ? b.text.length - b.appended : undefined;
+      return n ? jsoncToTree(n, undefined, b.start, b.removed, cap) : null;
     })
     .filter((n): n is TreeNode => n !== null);
   if (nodes.length === 0) return fromValue(parseJsonTolerant(text));
@@ -95,14 +97,17 @@ function jsonTree(text: string): TreeResult {
 }
 
 // removed: 파싱한 텍스트가 랩 줄바꿈 복구본일 때, 제거분을 되돌려 원본 좌표의 pos를 만들기 위한 오프셋들
-function jsoncToTree(node: JsoncNode, key: string | undefined, base: number, removed?: number[]): TreeNode {
-  const abs = (off: number): number => base + (removed?.length ? mapRepairedOffset(removed, off) : off);
+function jsoncToTree(node: JsoncNode, key: string | undefined, base: number, removed?: number[], capOff?: number): TreeNode {
+  const abs = (off: number): number => {
+    const mapped = removed?.length ? mapRepairedOffset(removed, off) : off;
+    return base + (capOff !== undefined ? Math.min(mapped, capOff) : mapped);
+  };
   const pos = { from: abs(node.offset), to: abs(node.offset + node.length) };
   if (node.type === 'object') {
     const children = (node.children ?? []).map((prop) => {
       const k = String(prop.children?.[0]?.value ?? '');
       const valNode = prop.children?.[1];
-      if (valNode) return jsoncToTree(valNode, k, base, removed);
+      if (valNode) return jsoncToTree(valNode, k, base, removed, capOff);
       return {
         key: k,
         type: 'scalar' as const,
@@ -117,7 +122,7 @@ function jsoncToTree(node: JsoncNode, key: string | undefined, base: number, rem
       key,
       type: 'array',
       pos,
-      children: (node.children ?? []).map((c, i) => jsoncToTree(c, String(i), base, removed)),
+      children: (node.children ?? []).map((c, i) => jsoncToTree(c, String(i), base, removed, capOff)),
     };
   }
   return { key, type: 'scalar', value: node.type === 'null' ? 'null' : String(node.value), pos };
