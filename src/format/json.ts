@@ -289,18 +289,28 @@ export function extractJsonSpans(
 ): Array<{ text: string; start: number; removed?: number[] }> {
   if (depth > 40) return [];
   const out: Array<{ text: string; start: number; removed?: number[] }> = [];
-  for (const [s, e] of topLevelSpans(text)) {
-    const span = text.slice(s, e + 1);
-    if (parsesAsJson(span)) {
-      out.push({ text: span, start: base + s });
-      continue;
+  let from = 0;
+  for (;;) {
+    const { spans, recoverFrom } = scanTopLevel(text, from);
+    for (const [s, e] of spans) {
+      const span = text.slice(s, e + 1);
+      if (parsesAsJson(span)) {
+        out.push({ text: span, start: base + s });
+        continue;
+      }
+      const rep = repairJsonStringNewlines(span);
+      if (rep.removed.length > 0 && parsesAsJson(rep.text)) {
+        out.push({ text: rep.text, start: base + s, removed: rep.removed });
+      } else {
+        out.push(...extractJsonSpans(text.slice(s + 1, e), base + s + 1, depth + 1));
+      }
     }
-    const rep = repairJsonStringNewlines(span);
-    if (rep.removed.length > 0 && parsesAsJson(rep.text)) {
-      out.push({ text: rep.text, start: base + s, removed: rep.removed });
-    } else {
-      out.push(...extractJsonSpans(text.slice(s + 1, e), base + s + 1, depth + 1));
-    }
+    if (recoverFrom === null) break;
+    // 로거가 잘라버린(끝까지 닫히지 않는) 블록/문자열: 그 줄만 건너뛰고 다음 줄부터
+    // 새 상태로 재탐색 — 잘린 한 줄이 이후 문서 전체를 삼키지 않게 한다(from은 단조 증가 → 종료 보장).
+    const nl = text.indexOf('\n', recoverFrom);
+    if (nl === -1) break;
+    from = nl + 1;
   }
   return out;
 }
@@ -314,14 +324,34 @@ export function extractJsonBlocks(text: string): string[] {
  * 문자열 리터럴 내부의 괄호는 무시하고, 괄호 종류가 어긋나면 해당 구간을 폐기한다.
  */
 export function topLevelSpans(text: string): Array<[number, number]> {
+  return scanTopLevel(text, 0).spans;
+}
+
+/**
+ * topLevelSpans의 내부 구현 + 복구 지점 보고. recoverFrom은 문서 끝까지 닫히지 않은
+ * 최상위 블록(로거가 자른 거대 JSON 등) 또는 열린 문자열의 시작 오프셋 — 호출자는 그
+ * 줄을 건너뛰고 재탐색해 이후 블록을 살릴 수 있다. 블록 밖(깊이 0) 문자열 상태는 줄
+ * 끝에서 리셋한다: 로그 텍스트의 홀수 따옴표가 다음 줄들을 삼키지 않게(랩 줄바꿈이
+ * 낀 문자열은 블록 '안'에서만 의미가 있으므로 스팬 검출에는 영향 없음).
+ */
+function scanTopLevel(
+  text: string,
+  from: number,
+): { spans: Array<[number, number]>; recoverFrom: number | null } {
   const spans: Array<[number, number]> = [];
   const stack: string[] = []; // 기대하는 닫는 괄호들
   let topStart = -1;
   let inStr = false;
   let escaped = false;
-  for (let i = 0; i < text.length; i++) {
+  let strStart = -1;
+  for (let i = from; i < text.length; i++) {
     const c = text[i];
     if (inStr) {
+      if (c === '\n' && stack.length === 0) {
+        inStr = false; // 블록 밖 문자열은 줄을 넘길 수 없다(로그 텍스트의 따옴표)
+        escaped = false;
+        continue;
+      }
       if (escaped) escaped = false;
       else if (c === '\\') escaped = true;
       else if (c === '"') inStr = false;
@@ -329,6 +359,7 @@ export function topLevelSpans(text: string): Array<[number, number]> {
     }
     if (c === '"') {
       inStr = true;
+      strStart = i;
     } else if (c === '{' || c === '[') {
       if (stack.length === 0) topStart = i;
       stack.push(c === '{' ? '}' : ']');
@@ -347,5 +378,9 @@ export function topLevelSpans(text: string): Array<[number, number]> {
       }
     }
   }
-  return spans;
+  // 문서 끝까지 닫히지 않은 구조가 남았으면 그 시작점을 보고(잘린 로그 라인 복구용)
+  let recoverFrom: number | null = null;
+  if (stack.length > 0 && topStart !== -1) recoverFrom = topStart;
+  else if (inStr) recoverFrom = strStart;
+  return { spans, recoverFrom };
 }

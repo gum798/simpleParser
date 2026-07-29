@@ -198,3 +198,26 @@ test('formatKeepOriginal: 깨진 XML은 관용 재작성(태그 보정) 대신 �
   expect(r.output).toBeUndefined();
   expect(r.diagnostics.length).toBeGreaterThan(0);
 });
+
+// ── 잘린 로그 라인 복원력: 닫히지 않은 블록/따옴표가 이후 문서를 삼키지 않게 ──
+
+test('로거가 자른(닫히지 않은) 거대 JSON 라인 이후의 블록도 계속 추출한다', () => {
+  const truncated = 'resp body={"openapi":"3.1.0","info":{"title":"T","desc":"cut here…(+40583자)';
+  const text = 'a={"x":1}\n' + truncated + '\nb={"y":2}\nc={"z":3}';
+  const blocks = extractJsonBlocks(text);
+  expect(blocks).toEqual(expect.arrayContaining(['{"x":1}', '{"y":2}', '{"z":3}']));
+});
+
+test('formatJsonInPlace: 잘린 라인은 원문 그대로 두고 그 뒤 블록은 정상 정렬', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const truncated = 'resp body={"a":{"b":"cut…';
+  const r = formatJsonInPlace('x={"p":1}\n' + truncated + '\ny={"q":2}');
+  expect(r.output).toContain('"p": 1');
+  expect(r.output).toContain('"q": 2'); // 잘린 라인 뒤도 계속 정렬
+  expect(r.output).toContain('cut…'); // 잘린 라인은 손대지 않음
+});
+
+test('블록 밖 홀수 따옴표는 줄 끝에서 리셋 — 다음 줄 블록을 삼키지 않는다', () => {
+  const text = 'warn said "unclosed quote\nb={"y":2}';
+  expect(extractJsonBlocks(text)).toEqual(['{"y":2}']);
+});
