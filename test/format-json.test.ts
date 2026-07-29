@@ -228,3 +228,79 @@ test('전체가 하나의 잘린 JSON 문서면 조각 추출이 아니라 관�
   expect(r.output).toContain('"openapi"'); // 최상위 키 유지 — 내부 조각으로 대체 금지
   expect(r.diagnostics.length).toBeGreaterThan(0); // 잘렸다는 진단 유지
 });
+
+// ── 잘린 블록 보충 복구: 닫는 괄호를 보충해 '있는 부분까지' 살린다 ──
+
+test('completeTruncatedJson: 문자열 중간에서 잘린 JSON을 닫아 유효하게 만든다', async () => {
+  const { completeTruncatedJson } = await import('../src/format/json');
+  const done = completeTruncatedJson('{"a":1,"info":{"title":"T","desc":"cut here…(+40583자)');
+  expect(done).not.toBeNull();
+  const v = JSON.parse(done!.text) as { a: number; info: { title: string; desc: string } };
+  expect(v.a).toBe(1);
+  expect(v.info.title).toBe('T');
+  expect(v.info.desc).toContain('cut here…(+40583자)'); // 잘린 지점까지의 내용 보존
+});
+
+test('completeTruncatedJson: 콤마/키 중간에서 잘려도 뒤를 다듬어 복구', async () => {
+  const { completeTruncatedJson } = await import('../src/format/json');
+  expect(JSON.parse(completeTruncatedJson('{"a":1,')!.text)).toEqual({ a: 1 });
+  expect(JSON.parse(completeTruncatedJson('{"a":1,"veryLongKeyName":')!.text)).toEqual({ a: 1 });
+  expect(completeTruncatedJson('{')).toBeNull(); // 빈 껍데기는 노이즈 — 보충 안 함
+});
+
+test('로거가 자른 거대 JSON 라인 자체도 보충 복구로 추출된다(뒤 내용이 없어도)', () => {
+  const log =
+    'request_end method=GET path=/openapi.json status=200 elapsed_ms=33\n' +
+    'x response_body path=/openapi.json status=200 body={"openapi":"3.1.0","info":{"title":"DTHub Agent Local","version":"0.1.0"},"paths":{"/health":{"get":{"operationId":"parse_task_definition_internal_oi_sim_parse_…(+40583자)\n' +
+    'y [DEBUG] Using selector: KqueueSelector\n' +
+    'z _startup_app llm routed via SKAX AI Hub chat_model=';
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.length).toBe(1);
+  const v = JSON.parse(blocks[0]) as { openapi: string; info: { title: string } };
+  expect(v.openapi).toBe('3.1.0');
+  expect(v.info.title).toBe('DTHub Agent Local');
+  const r = formatJson(log);
+  expect(r.output).toContain('"openapi": "3.1.0"'); // 정렬 결과에 잘린 문서의 앞부분이 나온다
+  expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('보충'))).toBe(true);
+});
+
+test('보충 복구 블록은 원본 유지(제자리) 정렬에서 원문 그대로 + 안내', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log = 'x body={"a":{"b":"cut…\ny body={"ok":1}';
+  const r = formatJsonInPlace(log);
+  expect(r.output).toContain('"ok": 1'); // 온전한 블록은 정렬
+  expect(r.output).toContain('{"a":{"b":"cut…'); // 잘린 블록은 원문 유지(닫는 괄호를 지어내지 않음)
+  expect(r.diagnostics.some((d) => d.message.includes('잘린'))).toBe(true);
+});
+
+// ── 2차 리뷰 반영: 보충 복구의 안전 게이트 ──
+
+test('깨진 통짜 문서(괄호 오타+절단)는 보충 조각이 아니라 관용 전체 복구', () => {
+  const r = formatJson('{"name":"app","deps":["a","b"},"scripts":{"build":"vite build"');
+  expect(r.output).toContain('"name"'); // 문서 앞부분 유지 — 뒤쪽 조각으로 대체 금지
+  expect(r.diagnostics.some((d) => d.severity === 'error')).toBe(true); // 에러 진단 유지
+});
+
+test('균형은 맞지만 깨진 문서 + 잘린 꼬리도 관용 전체 복구가 이긴다', () => {
+  const r = formatJson('{"a":1 "b":2}\nx {"c":"cut');
+  expect(r.output).toContain('"a"');
+  expect(r.diagnostics.some((d) => d.severity === 'error')).toBe(true);
+});
+
+test('불법 이스케이프(Windows 경로 등)로 크게 잘라야 하면 보충 포기 → 관용 복구(키 보존)', () => {
+  const r = formatJson('ERROR handler body={"code":500,"path":"C:\\Users\\svc\\app.json","hint":"retry later","body":"partial cut');
+  expect(r.output).toContain('"hint"'); // 보충 복구가 hint·body를 버리면 안 됨
+  expect(r.diagnostics.some((d) => d.severity === 'error')).toBe(true);
+});
+
+test('보충 복구가 꼬리를 다듬은 경우 경고에 버린 글자 수를 명시한다', () => {
+  const r = formatJson('x body={"a":1,"note":"ok","k":'); // `,"k":` 5자 트리밍 필요
+  expect(r.output).toContain('"note": "ok"');
+  expect(r.diagnostics.some((d) => d.message.includes('5자'))).toBe(true);
+});
+
+test('completeTruncatedJson: 트리밍 상한(32자) 초과·비JSON 시작은 null', async () => {
+  const { completeTruncatedJson } = await import('../src/format/json');
+  expect(completeTruncatedJson('{"a":1,"' + 'k'.repeat(60) + '":')).toBeNull(); // 긴 키 절단 → 포기
+  expect(completeTruncatedJson("{'k': 1, 'trunca")).toBeNull(); // 파이썬 dict repr — O(1) 게이트
+});

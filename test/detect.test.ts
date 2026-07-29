@@ -24,3 +24,11 @@ test('문자열 안 줄바꿈이 낀 로그 JSON(터미널 랩 복사)도 json�
     'request_body path=/internal body=\n{"runId":"fb97","taskContent":["과제내용\n1","지표를\n실시간으로 수집해 정제한다"]}';
   expect(detectFormat(log)).toBe('json');
 });
+
+test('잘린 거대 JSON 라인이 주 내용인 로그도 json으로 감지', () => {
+  const log =
+    'request_end path=/openapi.json elapsed_ms=33\n' +
+    'x response_body body={"openapi":"3.1.0","info":{"title":"T","version":"1"},"paths":{"/health":{"get":{"operationId":"cut…(+40583자)\n' +
+    'y Using selector: KqueueSelector';
+  expect(detectFormat(log)).toBe('json');
+});
