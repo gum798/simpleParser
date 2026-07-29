@@ -198,3 +198,33 @@ test('formatKeepOriginal: 깨진 XML은 관용 재작성(태그 보정) 대신 �
   expect(r.output).toBeUndefined();
   expect(r.diagnostics.length).toBeGreaterThan(0);
 });
+
+// ── 잘린 로그 라인 복원력: 닫히지 않은 블록/따옴표가 이후 문서를 삼키지 않게 ──
+
+test('로거가 자른(닫히지 않은) 거대 JSON 라인 이후의 블록도 계속 추출한다', () => {
+  const truncated = 'resp body={"openapi":"3.1.0","info":{"title":"T","desc":"cut here…(+40583자)';
+  const text = 'a={"x":1}\n' + truncated + '\nb={"y":2}\nc={"z":3}';
+  const blocks = extractJsonBlocks(text);
+  expect(blocks).toEqual(expect.arrayContaining(['{"x":1}', '{"y":2}', '{"z":3}']));
+});
+
+test('formatJsonInPlace: 잘린 라인은 원문 그대로 두고 그 뒤 블록은 정상 정렬', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const truncated = 'resp body={"a":{"b":"cut…';
+  const r = formatJsonInPlace('x={"p":1}\n' + truncated + '\ny={"q":2}');
+  expect(r.output).toContain('"p": 1');
+  expect(r.output).toContain('"q": 2'); // 잘린 라인 뒤도 계속 정렬
+  expect(r.output).toContain('cut…'); // 잘린 라인은 손대지 않음
+});
+
+test('줄바꿈을 걸쳐 닫히는 인용문(랩된 로그 텍스트) 뒤의 블록도 추출한다', () => {
+  // 리뷰 확정: 줄끝 문자열 리셋이 이 케이스를 회귀시켰음 — main 동작(줄바꿈 허용) 복원
+  expect(extractJsonBlocks('msg="request failed for\nuser bob" body={"a":1}')).toEqual(['{"a":1}']);
+});
+
+test('전체가 하나의 잘린 JSON 문서면 조각 추출이 아니라 관용 복구(키·진단 유지)', () => {
+  const doc = '{\n  "openapi": "3.1.0",\n  "info": {"title": "T", "version": "1"},\n  "desc": "cut…';
+  const r = formatJson(doc);
+  expect(r.output).toContain('"openapi"'); // 최상위 키 유지 — 내부 조각으로 대체 금지
+  expect(r.diagnostics.length).toBeGreaterThan(0); // 잘렸다는 진단 유지
+});

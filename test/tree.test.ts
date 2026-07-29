@@ -190,3 +190,10 @@ test('highlightText: 규칙 매칭 구간에 색 span, 규칙 없으면 순수 �
   expect(div.textContent).toBe('{"stage":"A"}\n{"stage":"B"}'); // 매칭 밖 텍스트 보존
   expect(highlightText('abc', [])).toBe('abc'); // 규칙 없음 → 문자열 그대로
 });
+
+test('전체가 하나의 잘린 JSON 문서면 트리도 조각 배열이 아니라 문서 트리(포맷 경로와 동일 라우팅)', () => {
+  const doc = '{\n  "openapi": "3.1.0",\n  "info": {"title": "T"},\n  "desc": "cut…';
+  const r = buildTree(doc, 'json');
+  expect(r.root?.type).toBe('object');
+  expect(r.root?.children?.map((c) => c.key)).toContain('openapi');
+});
