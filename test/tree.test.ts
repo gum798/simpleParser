@@ -215,3 +215,17 @@ test('잘린 거대 JSON 라인도 보충 복구 트리로 표시(pos는 원본 
   };
   walk(r.root!);
 });
+
+test('보충 복구 블록은 트리에서 partial 표시 + 경고 진단(정렬 경로와 동일 신호)', () => {
+  const text = 'head\nx body={"openapi":"3.1.0","info":{"title":"T","desc":"cut…\ntail';
+  const r = buildTree(text, 'json');
+  expect(r.root?.type).toBe('object');
+  expect(r.root?.partial).toBe(true); // 괄호를 보충한 결과임을 표시
+  expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('보충'))).toBe(true);
+});
+
+test('깨진 통짜 문서(괄호 오타+절단)는 트리도 관용 전체 트리(조각 아님)', () => {
+  const r = buildTree('{"name":"app","deps":["a","b"},"scripts":{"build":"vite build"', 'json');
+  expect(JSON.stringify(r.root)).toContain('name'); // 앞부분 키 유지
+  expect(r.root?.partial).toBe(true);
+});

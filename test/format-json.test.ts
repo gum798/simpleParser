@@ -272,3 +272,35 @@ test('보충 복구 블록은 원본 유지(제자리) 정렬에서 원문 그�
   expect(r.output).toContain('{"a":{"b":"cut…'); // 잘린 블록은 원문 유지(닫는 괄호를 지어내지 않음)
   expect(r.diagnostics.some((d) => d.message.includes('잘린'))).toBe(true);
 });
+
+// ── 2차 리뷰 반영: 보충 복구의 안전 게이트 ──
+
+test('깨진 통짜 문서(괄호 오타+절단)는 보충 조각이 아니라 관용 전체 복구', () => {
+  const r = formatJson('{"name":"app","deps":["a","b"},"scripts":{"build":"vite build"');
+  expect(r.output).toContain('"name"'); // 문서 앞부분 유지 — 뒤쪽 조각으로 대체 금지
+  expect(r.diagnostics.some((d) => d.severity === 'error')).toBe(true); // 에러 진단 유지
+});
+
+test('균형은 맞지만 깨진 문서 + 잘린 꼬리도 관용 전체 복구가 이긴다', () => {
+  const r = formatJson('{"a":1 "b":2}\nx {"c":"cut');
+  expect(r.output).toContain('"a"');
+  expect(r.diagnostics.some((d) => d.severity === 'error')).toBe(true);
+});
+
+test('불법 이스케이프(Windows 경로 등)로 크게 잘라야 하면 보충 포기 → 관용 복구(키 보존)', () => {
+  const r = formatJson('ERROR handler body={"code":500,"path":"C:\\Users\\svc\\app.json","hint":"retry later","body":"partial cut');
+  expect(r.output).toContain('"hint"'); // 보충 복구가 hint·body를 버리면 안 됨
+  expect(r.diagnostics.some((d) => d.severity === 'error')).toBe(true);
+});
+
+test('보충 복구가 꼬리를 다듬은 경우 경고에 버린 글자 수를 명시한다', () => {
+  const r = formatJson('x body={"a":1,"note":"ok","k":'); // `,"k":` 5자 트리밍 필요
+  expect(r.output).toContain('"note": "ok"');
+  expect(r.diagnostics.some((d) => d.message.includes('5자'))).toBe(true);
+});
+
+test('completeTruncatedJson: 트리밍 상한(32자) 초과·비JSON 시작은 null', async () => {
+  const { completeTruncatedJson } = await import('../src/format/json');
+  expect(completeTruncatedJson('{"a":1,"' + 'k'.repeat(60) + '":')).toBeNull(); // 긴 키 절단 → 포기
+  expect(completeTruncatedJson("{'k': 1, 'trunca")).toBeNull(); // 파이썬 dict repr — O(1) 게이트
+});

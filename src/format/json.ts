@@ -51,7 +51,7 @@ export function parseJsonTolerant(text: string): { value: unknown; diagnostics: 
 export type JsonResolution =
   | { kind: 'value'; value: unknown } // 전체가 유효한 단일 JSON
   | { kind: 'repaired'; value: unknown; removedNewlines: number } // 문자열 안 랩 줄바꿈 제거로 복구된 단일 JSON
-  | { kind: 'blocks'; values: unknown[]; completedBlocks?: number } // 텍스트에서 추출한 JSON 블록들(보충 복구 수 포함)
+  | { kind: 'blocks'; values: unknown[]; completedBlocks?: number; trimmedChars?: number } // 추출 블록들(보충 복구 수·버린 꼬리 수 포함)
   | { kind: 'tolerant'; value: unknown; diagnostics: Diagnostic[] }; // 깨진 단일 문서의 관용 복구
 
 /**
@@ -77,7 +77,7 @@ export function resolveJson(text: string): JsonResolution {
       /* 랩 복구로도 안 됨 → 추출/관용 복구로 */
     }
   }
-  const { spans, recoverFrom } = scanTopLevel(text, 0);
+  const { spans, recoverFrom, mismatched } = scanTopLevel(text, 0);
   // 전체가 (주변 공백 외엔) 하나의 괄호 구조면 '깨진 단일 문서'로 보고 추출하지 않는다.
   // (예: `{"a":1 "b":[2,3]}` 의 내부 `[2,3]`만 뽑아 a와 진단을 버리는 일 방지)
   const isWholeSingleSpan =
@@ -88,11 +88,16 @@ export function resolveJson(text: string): JsonResolution {
     spans.length === 0 && recoverFrom !== null && text.slice(0, recoverFrom).trim() === '';
   if (!isWholeSingleSpan && !isTruncatedWholeDoc) {
     const blockSpans = extractJsonSpans(text);
-    if (blockSpans.length > 0) {
+    // 보충 스팬'만' 있는 경우는 문서에 다른 JSON 구조 흔적(균형 스팬·괄호 불일치)이
+    // 전혀 없을 때만 채택 — 깨진 통짜 문서의 관용 전체 복구를 조각이 밀어내지 않게.
+    const hasReal = blockSpans.some((b) => !b.appended);
+    const salvageOnlyOk = spans.length === 0 && !mismatched;
+    if (blockSpans.length > 0 && (hasReal || salvageOnlyOk)) {
       return {
         kind: 'blocks',
         values: blockSpans.map((b) => JSON.parse(b.text) as unknown),
         completedBlocks: blockSpans.filter((b) => b.appended).length,
+        trimmedChars: blockSpans.reduce((n, b) => n + (b.trimmed ?? 0), 0),
       };
     }
   }
@@ -122,10 +127,13 @@ export function formatJson(text: string): FormatResult {
   }
   if (r.kind === 'blocks') {
     // 로그 등에서 추출 → 주변 텍스트를 버리므로 자동 정렬엔 부적합(수동 [정렬] 전용)
+    const trimmedNote = r.trimmedChars
+      ? ` — 파싱 불가한 꼬리 ${r.trimmedChars}자는 버렸습니다(마지막 값이 잘렸을 수 있음)`
+      : '';
     const diagnostics: Diagnostic[] = r.completedBlocks
       ? [
           {
-            message: `잘린 JSON 블록 ${r.completedBlocks}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)`,
+            message: `잘린 JSON 블록 ${r.completedBlocks}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)${trimmedNote}`,
             severity: 'warning',
           },
         ]
@@ -308,7 +316,16 @@ function parsesAsJson(s: string): boolean {
 export function completeTruncatedJson(
   region: string,
 ): { text: string; appended: number; trimmed: number } | null {
-  const MAX_TRIM = 256; // 꼬리를 걷어낼 수 있는 상한(키 문자열 + 구두점이면 충분)
+  // 트리밍 상한: 보통의 `,"key":`·후행 콤마·반쪽 이스케이프면 충분. 이보다 크게 잘라야
+  // 한다는 건 블록 앞쪽이 손상됐다는 뜻 — 조용히 내용을 버리느니 관용 복구에 양보한다.
+  const MAX_TRIM = 32;
+  // O(1) 사전 게이트: JSON일 수 없는 시작(파이썬 dict repr, JS 객체 toString 등)은
+  // 파싱 시도 없이 제외 — 잘린 비JSON 라인이 많은 로그에서의 성능 회귀 방지.
+  let j = 1;
+  while (j < region.length && /\s/.test(region[j])) j++;
+  const second = region[j] ?? '';
+  if (region[0] === '{' && second !== '"' && second !== '}') return null;
+  if (region[0] === '[' && !/["{[\d\-tfn]/.test(second)) return null;
   const cp = Math.max(0, region.length - MAX_TRIM);
   const stack: string[] = [];
   let inStr = false;
@@ -343,7 +360,15 @@ export function completeTruncatedJson(
     if (st.escaped || st.closers.length === 0) continue;
     const cut = region.length - trim;
     const cand = region.slice(0, cut) + (st.inStr ? '"' : '') + st.closers;
-    if (!parsesAsJson(cand)) continue;
+    if (!parsesAsJson(cand)) {
+      if (trim === 0) {
+        // 트리밍 가능 구간(cp) 앞쪽의 손상은 어떤 trim으로도 못 고친다 → 즉시 포기(성능 가드)
+        const errs: ParseError[] = [];
+        parse(cand, errs);
+        if (errs.length > 0 && errs[0].offset < cp) return null;
+      }
+      continue;
+    }
     const v = JSON.parse(cand) as unknown;
     const nonEmpty = Array.isArray(v)
       ? v.length > 0
@@ -368,6 +393,7 @@ export interface JsonSpan {
   removed?: number[]; // 랩 줄바꿈 복구 시 제거한 스팬 상대 오프셋들
   origLen?: number; // 원본 구간 길이(보충 복구 스팬용 — text 길이와 다름)
   appended?: number; // 잘린 블록 보충 시 덧붙인 문자 수(> 0이면 보충 복구 스팬)
+  trimmed?: number; // 보충 과정에서 버린 꼬리 문자 수(경고 문구에 사실대로 표기)
 }
 
 export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] {
@@ -404,6 +430,7 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
           start: base + recoverFrom,
           origLen: regionEnd - recoverFrom,
           appended: done.appended,
+          trimmed: done.trimmed,
         });
       }
     }
@@ -435,13 +462,14 @@ export function topLevelSpans(text: string): Array<[number, number]> {
 export function scanTopLevel(
   text: string,
   from: number,
-): { spans: Array<[number, number]>; recoverFrom: number | null } {
+): { spans: Array<[number, number]>; recoverFrom: number | null; mismatched: boolean } {
   const spans: Array<[number, number]> = [];
   const stack: string[] = []; // 기대하는 닫는 괄호들
   let topStart = -1;
   let inStr = false;
   let escaped = false;
   let strStart = -1;
+  let mismatched = false;
   for (let i = from; i < text.length; i++) {
     const c = text[i];
     if (inStr) {
@@ -468,6 +496,7 @@ export function scanTopLevel(
         // 괄호 종류 불일치 → 손상 구간, 초기화
         stack.length = 0;
         topStart = -1;
+        mismatched = true;
       }
     }
   }
@@ -475,5 +504,5 @@ export function scanTopLevel(
   let recoverFrom: number | null = null;
   if (stack.length > 0 && topStart !== -1) recoverFrom = topStart;
   else if (inStr) recoverFrom = strStart;
-  return { spans, recoverFrom };
+  return { spans, recoverFrom, mismatched };
 }
