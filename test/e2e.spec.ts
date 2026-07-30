@@ -773,3 +773,24 @@ test('모바일 폭(상하 스택)에서는 디바이더가 보이지 않는다'
   await expect(page.locator('#panel')).toBeVisible();
   await expect(page.locator('.pane-divider')).toBeHidden();
 });
+
+test('원본 유지: 잘린 JSON뿐인 입력은 정렬 시 OUTPUT 텍스트 뷰로 결과 표시(입력 무변경)', async ({ page }) => {
+  await page.goto('/');
+  await pickFormat(page, 'json');
+  await clickBtn(page, '원본 유지');
+  await page.locator('.cm-content').click();
+  // 타이핑은 자동 괄호 닫힘으로 잘린 JSON을 만들 수 없다 → 실제 시나리오처럼 붙여넣기
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'x body={"success":true,"data":{"label":"수작업 산정 검증  ]');
+    document
+      .querySelector('.cm-content')!
+      .dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500); // 붙여넣기 자동 정렬(원본 유지 → 통과) 정착
+  await clickFormat(page);
+  // 입력은 그대로(잘린 한 줄 유지)
+  await expect(page.locator('.cm-content')).toContainText('body={"success":true');
+  // OUTPUT 텍스트 뷰가 자동으로 열리고 보충 복구된 정렬 결과 표시
+  await expect(page.locator('#panel .output-text')).toContainText('"success": true');
+});

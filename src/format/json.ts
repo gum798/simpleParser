@@ -185,7 +185,10 @@ export function formatJsonInPlace(text: string): FormatResult {
   let keptTruncated = 0;
   for (const s of spans) {
     if (s.appended) {
-      keptTruncated++; // 보충 복구 블록은 원문 유지 — 닫는 괄호를 지어내 넣지 않는다
+      // 잘린 블록은 원문 유지 — 여러 줄로 펼치면 줄 단위 복구 스캔이 블록을 다시 한
+      // 덩어리로 인식하지 못해 재정렬·멱등성이 깨진다(검증 확인). 결과는 UI가
+      // truncatedKept를 보고 OUTPUT 텍스트 뷰(추출 경로)로 보여준다.
+      keptTruncated++;
       continue;
     }
     const origLen = s.origLen ?? s.text.length + (s.removed?.length ?? 0);
@@ -202,7 +205,7 @@ export function formatJsonInPlace(text: string): FormatResult {
       message: `잘린 JSON 블록 ${keptTruncated}개는 원문 그대로 두었습니다(로거 절단 추정)`,
       severity: 'warning',
     });
-  return { output: out, diagnostics, faithful: false }; // 블록 내부 공백 변경 → 자동 정렬 보류
+  return { output: out, diagnostics, faithful: false, truncatedKept: keptTruncated }; // 공백 변경 → 자동 정렬 보류
 }
 
 function wrapRepairWarning(count: number): Diagnostic {
@@ -239,7 +242,8 @@ export function prettyPrintJsonTokens(src: string): string {
       continue; // 구조 밖 공백은 버리고 새로 깐다
     } else if (c === '{' || c === '[') {
       let j = i + 1; // 빈 객체/배열은 {}·[]로 붙여 쓴다(JSON.stringify와 동일)
-      while (j < src.length && /\s/.test(src[j])) j++;
+      // 본 루프와 같은 공백 집합만 건너뛴다(\v·전각 공백 등을 조용히 삼키지 않게)
+      while (j < src.length && (src[j] === ' ' || src[j] === '\t' || src[j] === '\n' || src[j] === '\r')) j++;
       if (src[j] === (c === '{' ? '}' : ']')) {
         out += c + src[j];
         i = j;
@@ -249,7 +253,7 @@ export function prettyPrintJsonTokens(src: string): string {
         out += '\n' + indent();
       }
     } else if (c === '}' || c === ']') {
-      depth--;
+      depth = Math.max(0, depth - 1); // 짝 없는 닫기에도 음수 깊이로 터지지 않게(방어)
       out += '\n' + indent() + c;
     } else if (c === ',') {
       out += ',\n' + indent();
