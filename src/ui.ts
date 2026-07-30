@@ -499,6 +499,13 @@ export function mountApp(root: AppRoot): void {
           const notices = r.diagnostics.filter((d) => d.offset === undefined && d.severity === 'warning');
           if (notices.length > 0) showToast(notices[0].message);
           applyDiagnostics([...notices, ...after.diagnostics]); // 교체된 새 본문에 맞는 진단(오프셋 일치)
+        } else if (r.truncatedKept) {
+          // 잘린(로거 절단) 블록뿐이라 제자리에 펼칠 게 없음 → 입력은 그대로 두고
+          // 보충 복구된 정렬 결과를 OUTPUT 텍스트 뷰로 보여준다(렌더가 진단까지 적용)
+          panelView = 'text';
+          openPanel();
+          persist();
+          showToast('잘린 JSON은 제자리에 펼칠 수 없어 OUTPUT에 정렬 결과를 표시했습니다');
         } else {
           if (r.output === undefined) showToast('정렬을 보류했습니다(원문 보존)');
           applyDiagnostics(r.diagnostics);

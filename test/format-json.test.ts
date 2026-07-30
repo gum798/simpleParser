@@ -264,13 +264,26 @@ test('로거가 자른 거대 JSON 라인 자체도 보충 복구로 추출된�
   expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('보충'))).toBe(true);
 });
 
-test('보충 복구 블록은 원본 유지(제자리) 정렬에서 원문 그대로 + 안내', async () => {
+test('원본 유지: 잘린 블록은 원문 유지 + truncatedKept 보고(온전한 블록은 정렬)', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
   const log = 'x body={"a":{"b":"cut…\ny body={"ok":1}';
   const r = formatJsonInPlace(log);
   expect(r.output).toContain('"ok": 1'); // 온전한 블록은 정렬
-  expect(r.output).toContain('{"a":{"b":"cut…'); // 잘린 블록은 원문 유지(닫는 괄호를 지어내지 않음)
+  expect(r.output).toContain('{"a":{"b":"cut…'); // 잘린 블록은 원문 유지(여러 줄 펼침은 재스캔·멱등성을 깨서 금지)
+  expect(r.truncatedKept).toBe(1); // UI가 OUTPUT 텍스트 뷰 안내에 사용
   expect(r.diagnostics.some((d) => d.message.includes('잘린'))).toBe(true);
+});
+
+test('원본 유지: 잘린 거대 한 줄 JSON이 문서의 전부면 입력 무변경 + truncatedKept(UI가 OUTPUT으로 안내)', async () => {
+  const { formatJsonInPlace, formatJson } = await import('../src/format/json');
+  const log = 'x body={"success":true,"data":{"n3":{"label":"수작업 산정·검증            ]\n  },';
+  const r = formatJsonInPlace(log);
+  expect(r.output).toBe(log); // 입력은 그대로(무손실)
+  expect(r.truncatedKept).toBe(1);
+  // 같은 입력의 추출 경로(OUTPUT 텍스트 뷰가 쓰는)는 보충 복구된 결과를 낸다
+  const alt = formatJson(log);
+  expect(alt.output).toContain('"success": true');
+  expect(alt.output).toContain('수작업 산정·검증');
 });
 
 // ── 2차 리뷰 반영: 보충 복구의 안전 게이트 ──

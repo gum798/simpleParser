@@ -17,6 +17,8 @@ export interface FormatResult {
   // 정렬이 내용을 보존하는 '충실한' 재구성인지(자동 붙여넣기 정렬 적용 판단용).
   // false면 추출/복구처럼 내용이 바뀌는 정렬 → 자동 적용 보류. 미설정은 충실로 간주.
   faithful?: boolean;
+  // 제자리 정렬이 원문 유지한 잘린(로거 절단) 블록 수 — UI가 OUTPUT 텍스트 뷰 안내에 사용.
+  truncatedKept?: number;
 }
 
 export interface TreeNode {
