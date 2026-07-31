@@ -189,12 +189,28 @@ export function formatJsonInPlace(text: string): FormatResult {
   let pos = 0;
   let removedNewlines = 0;
   let keptTruncated = 0;
+  let salvagedClosed = 0;
+  let wrappedExpanded = 0;
   for (const s of spans) {
     if (s.appended) {
-      // 잘린 블록은 원문 유지 — 여러 줄로 펼치면 줄 단위 복구 스캔이 블록을 다시 한
-      // 덩어리로 인식하지 못해 재정렬·멱등성이 깨진다(검증 확인). 결과는 UI가
-      // truncatedKept를 보고 OUTPUT 텍스트 뷰(추출 경로)로 보여준다.
-      keptTruncated++;
+      if (s.trimmed) {
+        // 문자를 버려야 닫히는 블록은 본문에서 삭제 금지 → 원문 유지(UI가 OUTPUT으로 안내)
+        keptTruncated++;
+        continue;
+      }
+      // 보충 복구본(닫는 괄호·합성 '{' 포함)을 본문에서 그대로 펼친다 — 결과가 유효한
+      // JSON이라 재정렬·재검사에서도 안정(멱등). 원본 문자는 하나도 지우지 않고,
+      // 추가한 문자는 경고로 고지한다. (닫지 않은 채 펼치기는 재스캔을 깨서 금지 — 검증 확인)
+      const origLen = s.origLen ?? s.text.length;
+      if (s.wrapped) {
+        out += text.slice(pos, s.start + 1); // start 위치의 원본 문자(개행 등)는 보존 — '{'는 순수 추가
+        wrappedExpanded++;
+      } else {
+        out += text.slice(pos, s.start);
+        salvagedClosed++;
+      }
+      out += prettyPrintJsonTokens(s.text);
+      pos = s.start + origLen;
       continue;
     }
     const origLen = s.origLen ?? s.text.length + (s.removed?.length ?? 0);
@@ -206,6 +222,16 @@ export function formatJsonInPlace(text: string): FormatResult {
   out += text.slice(pos);
   const diagnostics: Diagnostic[] = [];
   if (removedNewlines > 0) diagnostics.push(wrapRepairWarning(removedNewlines));
+  if (salvagedClosed > 0)
+    diagnostics.push({
+      message: `잘린 JSON 블록 ${salvagedClosed}개에 닫는 괄호를 보충해 펼쳤습니다(로거 절단 추정)`,
+      severity: 'warning',
+    });
+  if (wrappedExpanded > 0)
+    diagnostics.push({
+      message: '중간이 잘린 JSON의 꼬리 키-값 조각을 객체로 묶어 펼쳤습니다(소실된 중간은 미포함)',
+      severity: 'warning',
+    });
   if (keptTruncated > 0)
     diagnostics.push({
       message: `잘린 JSON 블록 ${keptTruncated}개는 원문 그대로 두었습니다(로거 절단 추정)`,

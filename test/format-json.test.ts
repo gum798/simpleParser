@@ -264,26 +264,43 @@ test('로거가 자른 거대 JSON 라인 자체도 보충 복구로 추출된�
   expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('보충'))).toBe(true);
 });
 
-test('원본 유지: 잘린 블록은 원문 유지 + truncatedKept 보고(온전한 블록은 정렬)', async () => {
+test('원본 유지: 잘린 블록도 닫는 괄호를 보충해 본문에서 펼친다(온전한 블록과 함께)', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
   const log = 'x body={"a":{"b":"cut…\ny body={"ok":1}';
   const r = formatJsonInPlace(log);
-  expect(r.output).toContain('"ok": 1'); // 온전한 블록은 정렬
-  expect(r.output).toContain('{"a":{"b":"cut…'); // 잘린 블록은 원문 유지(여러 줄 펼침은 재스캔·멱등성을 깨서 금지)
-  expect(r.truncatedKept).toBe(1); // UI가 OUTPUT 텍스트 뷰 안내에 사용
-  expect(r.diagnostics.some((d) => d.message.includes('잘린'))).toBe(true);
+  expect(r.output).toContain('"ok": 1'); // 온전한 블록 정렬
+  expect(r.output).toContain('"b": "cut…"'); // 잘린 블록: 닫는 따옴표 보충 + 펼침(본문에 표시)
+  expect(r.truncatedKept ?? 0).toBe(0); // 보충 성공 → OUTPUT 우회 안내 불필요
+  expect(r.diagnostics.some((d) => d.message.includes('보충'))).toBe(true); // 추가한 문자 고지
 });
 
-test('원본 유지: 잘린 거대 한 줄 JSON이 문서의 전부면 입력 무변경 + truncatedKept(UI가 OUTPUT으로 안내)', async () => {
-  const { formatJsonInPlace, formatJson } = await import('../src/format/json');
-  const log = 'x body={"success":true,"data":{"n3":{"label":"수작업 산정·검증            ]\n  },';
+test('원본 유지: 잘린 문서(머리+꼬리)도 본문에서 펼쳐진다 — 로그 접두어 보존', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log =
+    'x response_body body={"success":true,"data":{"n3":{"label":"수작업 산정·검증  ]\n' +
+    '  },\n  "error": null,\n  "timestamp": "2026-07-30T07:20:07.653529+00:00"\n}';
   const r = formatJsonInPlace(log);
-  expect(r.output).toBe(log); // 입력은 그대로(무손실)
-  expect(r.truncatedKept).toBe(1);
-  // 같은 입력의 추출 경로(OUTPUT 텍스트 뷰가 쓰는)는 보충 복구된 결과를 낸다
-  const alt = formatJson(log);
-  expect(alt.output).toContain('"success": true');
-  expect(alt.output).toContain('수작업 산정·검증');
+  expect(r.output).not.toBe(log); // 본문이 실제로 바뀐다(사용자 요구)
+  expect(r.output).toContain('x response_body body='); // 로그 접두어는 그대로
+  expect(r.output).toContain('"success": true'); // 머리 펼침
+  expect(r.output).toContain('"error": null'); // 꼬리 복원 펼침
+  expect(r.output).toContain('"timestamp": "2026-07-30T07:20:07.653529+00:00"');
+});
+
+test('원본 유지: 제자리 보충 펼침은 멱등 — 두 번째 정렬은 무변화', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log = 'x body={"a":{"b":"cut…\ny body={"ok":1}';
+  const once = formatJsonInPlace(log).output!;
+  const twice = formatJsonInPlace(once).output ?? once;
+  expect(twice).toBe(once);
+});
+
+test('원본 유지: 문자를 버려야 하는(트리밍) 블록만 원문 유지 + truncatedKept', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log = 'x body={"a":1,"k":'; // `,"k":` 5자를 버려야 닫힘 → 본문에서 삭제 금지
+  const r = formatJsonInPlace(log);
+  expect(r.output ?? log).toBe(log); // 무변화(삭제 없음)
+  expect(r.truncatedKept).toBe(1); // UI가 OUTPUT 텍스트 뷰로 안내
 });
 
 // ── 2차 리뷰 반영: 보충 복구의 안전 게이트 ──
@@ -348,11 +365,16 @@ test('중간이 잘린 문서: 꼬리 키-값 조각을 객체로 묶어 복원(
   expect(r.diagnostics.some((d) => d.message.includes('꼬리'))).toBe(true); // 복원 사실 고지
 });
 
-test('중간이 잘린 문서: 원본 유지는 입력 무변경 + truncatedKept(OUTPUT 안내)', async () => {
+test('중간이 잘린 문서: 원본 유지도 본문에서 머리·꼬리를 펼친다(로그 접두어 보존)', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
   const r = formatJsonInPlace(MIDCUT_LOG);
-  expect(r.output).toBe(MIDCUT_LOG);
-  expect(r.truncatedKept).toBeGreaterThan(0);
+  expect(r.output).not.toBe(MIDCUT_LOG); // 본문이 바뀐다
+  expect(r.output).toContain('response_body path=/internal/oi-sim/module4'); // 접두어 보존
+  expect(r.output).toContain('"success": true'); // 머리 펼침
+  expect(r.output).toContain('"error": null'); // 꼬리 복원 펼침
+  expect(r.truncatedKept ?? 0).toBe(0);
+  // 멱등: 한 번 더 정렬해도 동일
+  expect(formatJsonInPlace(r.output!).output ?? r.output).toBe(r.output);
 });
 
 test('꼬리 복원은 로그 레코드가 뒤따르는 경우엔 발동하지 않는다(기존 동작 유지)', () => {
