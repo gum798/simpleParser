@@ -229,3 +229,20 @@ test('깨진 통짜 문서(괄호 오타+절단)는 트리도 관용 전체 트�
   expect(JSON.stringify(r.root)).toContain('name'); // 앞부분 키 유지
   expect(r.root?.partial).toBe(true);
 });
+
+test('중간이 잘린 문서의 트리: 머리·꼬리 블록 모두 표시(꼬리 키 포함, partial)', () => {
+  const text = [
+    'x body={"success":true,"data":{"n3":{"label":"수작업 산정·검증  ]',
+    '  },',
+    '  "error": null,',
+    '  "requestId": "3606636e",',
+    '  "timestamp": "2026-07-30T07:20:07.653529+00:00"',
+    '}',
+  ].join('\n');
+  const r = buildTree(text, 'json');
+  const dump = JSON.stringify(r.root);
+  expect(dump).toContain('success'); // 머리
+  expect(dump).toContain('error'); // 꼬리 복원
+  expect(dump).toContain('requestId');
+  expect(r.root?.children?.every((c) => c.partial === true || c.key !== undefined)).toBe(true);
+});
