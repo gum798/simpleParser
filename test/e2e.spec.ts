@@ -774,7 +774,7 @@ test('모바일 폭(상하 스택)에서는 디바이더가 보이지 않는다'
   await expect(page.locator('.pane-divider')).toBeHidden();
 });
 
-test('원본 유지: 잘린 JSON뿐인 입력은 정렬 시 OUTPUT 텍스트 뷰로 결과 표시(입력 무변경)', async ({ page }) => {
+test('원본 유지: 잘린 JSON도 정렬 시 본문에서 보충 펼침(로그 접두어 보존)', async ({ page }) => {
   await page.goto('/');
   await pickFormat(page, 'json');
   await clickBtn(page, '원본 유지');
@@ -789,8 +789,8 @@ test('원본 유지: 잘린 JSON뿐인 입력은 정렬 시 OUTPUT 텍스트 뷰
   });
   await page.waitForTimeout(500); // 붙여넣기 자동 정렬(원본 유지 → 통과) 정착
   await clickFormat(page);
-  // 입력은 그대로(잘린 한 줄 유지)
-  await expect(page.locator('.cm-content')).toContainText('body={"success":true');
-  // OUTPUT 텍스트 뷰가 자동으로 열리고 보충 복구된 정렬 결과 표시
-  await expect(page.locator('#panel .output-text')).toContainText('"success": true');
+  // 본문에서 바로 펼쳐진다(사용자 요구) — 로그 접두어는 보존
+  await expect(page.locator('.cm-content')).toContainText('x body=');
+  await expect(page.locator('.cm-content')).toContainText('"success": true');
+  await expect(page.locator('.cm-content')).toContainText('수작업 산정 검증');
 });
