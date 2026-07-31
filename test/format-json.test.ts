@@ -317,3 +317,48 @@ test('completeTruncatedJson: 트리밍 상한(32자) 초과·비JSON 시작은 n
   expect(completeTruncatedJson('{"a":1,"' + 'k'.repeat(60) + '":')).toBeNull(); // 긴 키 절단 → 포기
   expect(completeTruncatedJson("{'k': 1, 'trunca")).toBeNull(); // 파이썬 dict repr — O(1) 게이트
 });
+
+// ── 중간이 잘린 문서(머리 압축·중간 소실·꼬리 정상)의 꼬리 복원 ──
+
+const MIDCUT_LOG = [
+  '2026-07-30 16:20:07.654 [DEBUG] response_body path=/internal/oi-sim/module4 status=200 body={"success":true,"data":{"stage":"MODULE4","interaction":[{"kind":"result","oiCandidates":[{"candidateType":"ACADEMIC","n3":{"label":"수작업 산정·검증            ]',
+  '          }',
+  '        ]',
+  '      }',
+  '    ],',
+  '    "collected": []',
+  '  },',
+  '  "error": null,',
+  '  "requestId": "3606636e-4013-4d17-84a2-fd5658e45221",',
+  '  "payload": {',
+  '  "runId": "2365ba83-caf8-3077-8657-ff8864fb23bc",',
+  '  "action": "MODULE4"',
+  '},',
+  '  "timestamp": "2026-07-30T07:20:07.653529+00:00"',
+  '}',
+].join('\n');
+
+test('중간이 잘린 문서: 꼬리 키-값 조각을 객체로 묶어 복원(머리+꼬리)', () => {
+  const r = formatJson(MIDCUT_LOG);
+  expect(r.output).toContain('"success": true'); // 머리(보충 복구)
+  expect(r.output).toContain('"error": null'); // 꼬리 복원 — 이전엔 통째로 소실
+  expect(r.output).toContain('"requestId": "3606636e-4013-4d17-84a2-fd5658e45221"');
+  expect(r.output).toContain('"timestamp": "2026-07-30T07:20:07.653529+00:00"');
+  expect(r.output).toContain('"action": "MODULE4"'); // payload 내부까지
+  expect(r.diagnostics.some((d) => d.message.includes('꼬리'))).toBe(true); // 복원 사실 고지
+});
+
+test('중간이 잘린 문서: 원본 유지는 입력 무변경 + truncatedKept(OUTPUT 안내)', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const r = formatJsonInPlace(MIDCUT_LOG);
+  expect(r.output).toBe(MIDCUT_LOG);
+  expect(r.truncatedKept).toBeGreaterThan(0);
+});
+
+test('꼬리 복원은 로그 레코드가 뒤따르는 경우엔 발동하지 않는다(기존 동작 유지)', () => {
+  const log =
+    'x body={"openapi":"3.1.0","info":{"title":"T","desc":"cut…\n' +
+    'y request body={"runId":"r1","ok":true}';
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.some((b) => b.includes('"runId"'))).toBe(true); // 뒤 레코드 정상 추출
+});

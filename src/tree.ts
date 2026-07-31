@@ -87,8 +87,11 @@ function jsonTree(text: string): TreeResult {
   // 스팬·괄호 불일치)이 있으면 조각 트리 대신 관용 전체 트리로.
   const hasReal = blocks.some((b) => !b.appended);
   const salvageOnlyOk = spans.length === 0 && !mismatched;
-  if (blocks.length === 0 || (!hasReal && !salvageOnlyOk)) return fromValue(parseJsonTolerant(text));
+  const hasWrapped = blocks.some((b) => b.wrapped); // 꼬리 복원 성립 = 잘린 한 문서라는 강한 증거
+  if (blocks.length === 0 || (!hasReal && !salvageOnlyOk && !hasWrapped))
+    return fromValue(parseJsonTolerant(text));
   let completed = 0;
+  let wrappedCount = 0;
   let trimmedChars = 0;
   const nodes = blocks
     .map((b) => {
@@ -98,8 +101,9 @@ function jsonTree(text: string): TreeResult {
       const cap = b.appended ? b.text.length - b.appended : undefined;
       const t = jsoncToTree(n, undefined, b.start, b.removed, cap);
       if (b.appended) {
-        t.partial = true; // 괄호를 보충한 결과임을 표시(정렬 경로와 동일 신호)
-        completed++;
+        t.partial = true; // 괄호 보충/꼬리 복원 결과임을 표시(정렬 경로와 동일 신호)
+        if (b.wrapped) wrappedCount++;
+        else completed++;
         trimmedChars += b.trimmed ?? 0;
       }
       return t;
@@ -107,16 +111,19 @@ function jsonTree(text: string): TreeResult {
     .filter((n): n is TreeNode => n !== null);
   if (nodes.length === 0) return fromValue(parseJsonTolerant(text));
   const root = nodes.length === 1 ? nodes[0] : { type: 'array' as const, children: nodes };
-  const diagnostics: Diagnostic[] = completed
-    ? [
-        {
-          message:
-            `잘린 JSON 블록 ${completed}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)` +
-            (trimmedChars ? ` — 파싱 불가한 꼬리 ${trimmedChars}자는 버렸습니다(마지막 값이 잘렸을 수 있음)` : ''),
-          severity: 'warning',
-        },
-      ]
-    : [];
+  const diagnostics: Diagnostic[] = [];
+  if (completed)
+    diagnostics.push({
+      message:
+        `잘린 JSON 블록 ${completed}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)` +
+        (trimmedChars ? ` — 파싱 불가한 꼬리 ${trimmedChars}자는 버렸습니다(마지막 값이 잘렸을 수 있음)` : ''),
+      severity: 'warning',
+    });
+  if (wrappedCount)
+    diagnostics.push({
+      message: '중간이 잘린 JSON의 꼬리 키-값 조각을 객체로 묶어 복원했습니다(소실된 중간은 미포함)',
+      severity: 'warning',
+    });
   return { root, diagnostics };
 }
 

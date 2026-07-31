@@ -51,7 +51,7 @@ export function parseJsonTolerant(text: string): { value: unknown; diagnostics: 
 export type JsonResolution =
   | { kind: 'value'; value: unknown } // 전체가 유효한 단일 JSON
   | { kind: 'repaired'; value: unknown; removedNewlines: number } // 문자열 안 랩 줄바꿈 제거로 복구된 단일 JSON
-  | { kind: 'blocks'; values: unknown[]; completedBlocks?: number; trimmedChars?: number } // 추출 블록들(보충 복구 수·버린 꼬리 수 포함)
+  | { kind: 'blocks'; values: unknown[]; completedBlocks?: number; wrappedBlocks?: number; trimmedChars?: number } // 추출 블록들(보충/꼬리 복원 수 포함)
   | { kind: 'tolerant'; value: unknown; diagnostics: Diagnostic[] }; // 깨진 단일 문서의 관용 복구
 
 /**
@@ -92,11 +92,14 @@ export function resolveJson(text: string): JsonResolution {
     // 전혀 없을 때만 채택 — 깨진 통짜 문서의 관용 전체 복구를 조각이 밀어내지 않게.
     const hasReal = blockSpans.some((b) => !b.appended);
     const salvageOnlyOk = spans.length === 0 && !mismatched;
-    if (blockSpans.length > 0 && (hasReal || salvageOnlyOk)) {
+    // 꼬리 복원이 성립했다는 건 '잘린 한 문서'라는 강한 증거 — 관용 복구보다 낫다
+    const hasWrapped = blockSpans.some((b) => b.wrapped);
+    if (blockSpans.length > 0 && (hasReal || salvageOnlyOk || hasWrapped)) {
       return {
         kind: 'blocks',
         values: blockSpans.map((b) => JSON.parse(b.text) as unknown),
-        completedBlocks: blockSpans.filter((b) => b.appended).length,
+        completedBlocks: blockSpans.filter((b) => b.appended && !b.wrapped).length,
+        wrappedBlocks: blockSpans.filter((b) => b.wrapped).length,
         trimmedChars: blockSpans.reduce((n, b) => n + (b.trimmed ?? 0), 0),
       };
     }
@@ -130,14 +133,17 @@ export function formatJson(text: string): FormatResult {
     const trimmedNote = r.trimmedChars
       ? ` — 파싱 불가한 꼬리 ${r.trimmedChars}자는 버렸습니다(마지막 값이 잘렸을 수 있음)`
       : '';
-    const diagnostics: Diagnostic[] = r.completedBlocks
-      ? [
-          {
-            message: `잘린 JSON 블록 ${r.completedBlocks}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)${trimmedNote}`,
-            severity: 'warning',
-          },
-        ]
-      : [];
+    const diagnostics: Diagnostic[] = [];
+    if (r.completedBlocks)
+      diagnostics.push({
+        message: `잘린 JSON 블록 ${r.completedBlocks}개의 닫는 괄호를 보충해 복구했습니다(로거 절단 추정)${trimmedNote}`,
+        severity: 'warning',
+      });
+    if (r.wrappedBlocks)
+      diagnostics.push({
+        message: `중간이 잘린 JSON의 꼬리 키-값 조각을 객체로 묶어 복원했습니다(소실된 중간은 미포함)`,
+        severity: 'warning',
+      });
     return {
       output: r.values.map((v) => JSON.stringify(v, null, 2)).join('\n\n'),
       diagnostics,
@@ -398,6 +404,7 @@ export interface JsonSpan {
   origLen?: number; // 원본 구간 길이(보충 복구 스팬용 — text 길이와 다름)
   appended?: number; // 잘린 블록 보충 시 덧붙인 문자 수(> 0이면 보충 복구 스팬)
   trimmed?: number; // 보충 과정에서 버린 꼬리 문자 수(경고 문구에 사실대로 표기)
+  wrapped?: boolean; // 중간이 잘린 문서의 꼬리 키-값 조각을 '{'로 묶어 복원한 스팬
 }
 
 export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] {
@@ -439,6 +446,41 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
       }
     }
     if (nl === -1) break;
+    // 중간이 잘린 문서의 꼬리 복원: 고아 클로저 줄들 뒤의 나머지가 `"key": …` 조각이고
+    // '{' 하나만 앞에 붙여 통째로 파싱되면(문서 자신의 마지막 닫는 괄호가 짝) 한 블록으로 살린다.
+    // 로그 레코드가 뒤따르면 파싱이 실패해 발동하지 않는다(기존 줄 단위 재탐색 유지).
+    let t = nl + 1;
+    let wrappedTail = false;
+    for (let attempts = 0; attempts < 20 && t < text.length; attempts++) {
+      for (;;) {
+        // 고아 클로저(닫는 괄호·콤마)만 있는 줄과 빈 줄은 건너뛴다 — 소실된 중간의 잔해
+        const le = text.indexOf('\n', t);
+        const line = text.slice(t, le === -1 ? text.length : le);
+        if (!/^[\s}\],]*$/.test(line)) break;
+        if (le === -1) {
+          t = text.length;
+          break;
+        }
+        t = le + 1;
+      }
+      if (t >= text.length || !/^\s*"/.test(text.slice(t, t + 80))) break; // 키-값 조각 모양이 아님
+      const wrappedText = '{' + text.slice(t);
+      if (parsesAsJson(wrappedText)) {
+        out.push({
+          text: wrappedText,
+          start: t - 1, // '{'를 앞에 붙였으므로 한 칸 앞 — 자식 오프셋이 원본과 1:1로 맞는다
+          origLen: text.length - t + 1,
+          appended: 1,
+          wrapped: true,
+        });
+        wrappedTail = true;
+        break;
+      }
+      const le = text.indexOf('\n', t);
+      if (le === -1) break;
+      t = le + 1; // 이 줄을 조각에서 제외하고 다음 줄부터 재시도
+    }
+    if (wrappedTail) break; // 나머지 전체를 꼬리 블록으로 소비
     from = nl + 1;
   }
   return out;
