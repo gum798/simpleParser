@@ -128,20 +128,21 @@ test('콤마 빠진(중첩 배열 포함) 단일 문서는 a를 버리지 않고
 test('formatJsonInPlace: 로그 접두어·후미를 남기고 JSON만 제자리에서 펼친다', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
   const r = formatJsonInPlace('log body={"x":1} end');
-  expect(r.output).toBe('log body={\n  "x": 1\n} end');
+  // 여는 괄호는 접두어 다음 줄에서 시작(사용자 요청: body= 뒤 줄바꿈)
+  expect(r.output).toBe('log body=\n{\n  "x": 1\n} end');
   expect(r.faithful).toBe(false); // 내용(공백) 변경 → 자동 정렬 보류
 });
 
 test('formatJsonInPlace: 여러 블록도 각자 제자리에서 펼친다', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
   const r = formatJsonInPlace('a={"x":1} b={"y":2}');
-  expect(r.output).toBe('a={\n  "x": 1\n} b={\n  "y": 2\n}');
+  expect(r.output).toBe('a=\n{\n  "x": 1\n} b=\n{\n  "y": 2\n}');
 });
 
 test('formatJsonInPlace: 랩 줄바꿈 낀 블록은 복구해 펼치고 경고를 남긴다', async () => {
   const { formatJsonInPlace } = await import('../src/format/json');
   const r = formatJsonInPlace('body={"a":"b\nc"} 뒤');
-  expect(r.output).toBe('body={\n  "a": "bc"\n} 뒤');
+  expect(r.output).toBe('body=\n{\n  "a": "bc"\n} 뒤');
   expect(r.diagnostics.some((d) => d.severity === 'warning' && d.message.includes('줄바꿈'))).toBe(true);
 });
 
@@ -383,4 +384,11 @@ test('꼬리 복원은 로그 레코드가 뒤따르는 경우엔 발동하지 �
     'y request body={"runId":"r1","ok":true}';
   const blocks = extractJsonBlocks(log);
   expect(blocks.some((b) => b.includes('"runId"'))).toBe(true); // 뒤 레코드 정상 추출
+});
+
+test('제자리 정렬: 이미 줄 첫머리에 있는 블록 앞엔 빈 줄을 더 넣지 않는다(멱등)', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const once = formatJsonInPlace('log body={"x":1} end').output!;
+  expect(formatJsonInPlace(once).output ?? once).toBe(once); // 두 번째 정렬 무변화
+  expect(once).not.toContain('=\n\n'); // 이중 개행 없음
 });

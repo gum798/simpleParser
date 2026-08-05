@@ -187,9 +187,11 @@ export function mountApp(root: AppRoot): void {
   cleanBtn.addEventListener('click', doClean);
   const viewBtn = button('');
   viewBtn.className = 'btn';
+  viewBtn.setAttribute('aria-pressed', 'false'); // 패널 열림 상태를 켬/끔으로 표시(원본 유지와 동일)
   viewBtn.addEventListener('click', toggleView);
   const highlightBtn = button('하이라이트');
   highlightBtn.className = 'btn';
+  highlightBtn.setAttribute('aria-pressed', 'false'); // 규칙창 열림 상태 표시
   highlightBtn.addEventListener('click', toggleRules);
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
@@ -410,6 +412,7 @@ export function mountApp(root: AppRoot): void {
   function openRulesPanel(): void {
     root.rules.hidden = false;
     rulesOpen = true;
+    highlightBtn.setAttribute('aria-pressed', 'true');
     document.body.classList.add('rules-open');
     if (currentRules.length === 0) rulesPanel.render([createRule()]);
     syncRulesPad();
@@ -420,6 +423,7 @@ export function mountApp(root: AppRoot): void {
     else {
       root.rules.hidden = true;
       rulesOpen = false;
+      highlightBtn.setAttribute('aria-pressed', 'false');
       document.body.classList.remove('rules-open');
     }
     persist();
@@ -660,6 +664,7 @@ export function mountApp(root: AppRoot): void {
     root.panel.hidden = false;
     divider.hidden = false; // 패널과 함께 너비 조절 디바이더 표시
     panelOpen = true;
+    viewBtn.setAttribute('aria-pressed', 'true');
   }
 
   function toggleView(): void {
@@ -667,6 +672,7 @@ export function mountApp(root: AppRoot): void {
       root.panel.hidden = true; // 이미 열려 있으면 닫기(토글, 스펙 §4.4)
       divider.hidden = true;
       panelOpen = false;
+      viewBtn.setAttribute('aria-pressed', 'false');
     } else {
       openPanel();
     }
