@@ -794,3 +794,34 @@ test('원본 유지: 잘린 JSON도 정렬 시 본문에서 보충 펼침(로그
   await expect(page.locator('.cm-content')).toContainText('"success": true');
   await expect(page.locator('.cm-content')).toContainText('수작업 산정 검증');
 });
+
+test('[트리]·[하이라이트] 버튼도 켬/끔 상태를 표시한다(원본 유지와 동일 패턴)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  const viewBtn = page.locator('#toolbar .btn', { hasText: /^트리$/ });
+  const hlBtn = page.locator('#toolbar .btn', { hasText: /^하이라이트$/ });
+  await expect(viewBtn).toHaveAttribute('aria-pressed', 'false');
+  await expect(hlBtn).toHaveAttribute('aria-pressed', 'false');
+  await viewBtn.click(); // 패널 열림 → 켬 표시
+  await expect(viewBtn).toHaveAttribute('aria-pressed', 'true');
+  await hlBtn.click(); // 규칙창 열림 → 켬 표시
+  await expect(hlBtn).toHaveAttribute('aria-pressed', 'true');
+  await viewBtn.click(); // 닫힘 → 끔
+  await expect(viewBtn).toHaveAttribute('aria-pressed', 'false');
+  await hlBtn.click();
+  await expect(hlBtn).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('공유 링크로 패널이 열린 채 복원되면 버튼 상태도 켬으로 표시', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.cm-content').click();
+  await page.keyboard.type('{"a":1}');
+  await page.locator('#toolbar .btn', { hasText: /^트리$/ }).click();
+  await clickBtn(page, '하이라이트');
+  await clickBtn(page, '저장'); // 해시 동기화
+  await page.locator('#save-dialog').getByRole('button', { name: '닫기' }).click();
+  await page.reload();
+  await expect(page.locator('#toolbar .btn', { hasText: /^트리$/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#toolbar .btn', { hasText: /^하이라이트$/ })).toHaveAttribute('aria-pressed', 'true');
+});

@@ -187,6 +187,12 @@ export function formatJsonInPlace(text: string): FormatResult {
   const spans = extractJsonSpans(text);
   let out = '';
   let pos = 0;
+  // 여러 줄 블록이 줄 중간(body= 뒤 등)에서 시작하면 여는 괄호를 새 줄로 내린다(가독성).
+  // 이미 줄 첫머리면 그대로 → 멱등.
+  const emitBlock = (pretty: string): void => {
+    if (pretty.includes('\n') && out.length > 0 && !out.endsWith('\n')) out += '\n';
+    out += pretty;
+  };
   let removedNewlines = 0;
   let keptTruncated = 0;
   let salvagedClosed = 0;
@@ -209,13 +215,13 @@ export function formatJsonInPlace(text: string): FormatResult {
         out += text.slice(pos, s.start);
         salvagedClosed++;
       }
-      out += prettyPrintJsonTokens(s.text);
+      emitBlock(prettyPrintJsonTokens(s.text));
       pos = s.start + origLen;
       continue;
     }
     const origLen = s.origLen ?? s.text.length + (s.removed?.length ?? 0);
     out += text.slice(pos, s.start);
-    out += prettyPrintJsonTokens(s.text);
+    emitBlock(prettyPrintJsonTokens(s.text));
     pos = s.start + origLen;
     removedNewlines += s.removed?.length ?? 0;
   }
