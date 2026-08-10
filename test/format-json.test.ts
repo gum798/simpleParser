@@ -392,3 +392,45 @@ test('제자리 정렬: 이미 줄 첫머리에 있는 블록 앞엔 빈 줄을 
   expect(formatJsonInPlace(once).output ?? once).toBe(once); // 두 번째 정렬 무변화
   expect(once).not.toContain('=\n\n'); // 이중 개행 없음
 });
+
+// ── 끝이 잘린 + 문자열 안 실제 줄바꿈 조합(로거가 \n을 그대로 출력한 응답) ──
+
+const CUT_MULTILINE_LOG = [
+  'x response_body status=200 body={"success":true,"data":{"collected":[{"key":"taskContent","value":["시스템 구축',
+  'DT Hub는 게이트웨이로 활용하며 연계 인프라를 제공함',
+  '개발 환경 Amazon EC2 (t3.large), Nginx :80/:8000',
+  'CI/CD Pipeline AWS CodePipeline","아키텍처 설계·구축(연동 포함)","운영 체계 수립"]}]},"requestId":"a65f86ae","payload":{"runId":"6c6e22e0-e4c2-3293-b0d4-',
+].join('\n');
+
+test('끝 잘림+문자열 안 줄바꿈: 전체 꼬리를 통째로 복구(줄에서 끊지 않음)', () => {
+  const r = formatJson(CUT_MULTILINE_LOG);
+  expect(r.output).toContain('"success": true');
+  expect(r.output).toContain('"taskContent"'); // 줄바꿈 낀 문자열 너머까지
+  expect(r.output).toContain('"requestId": "a65f86ae"'); // 꼬리 필드
+  expect(r.output).toContain('"runId": "6c6e22e0-e4c2-3293-b0d4-"'); // 잘린 값은 있는 데까지
+  expect(r.output).toContain('아키텍처 설계·구축(연동 포함)'); // 배열 나머지 원소 보존
+});
+
+test('끝 잘림+문자열 안 줄바꿈: 감지·트리도 정상(markdown/스칼라 아님)', async () => {
+  const { detectFormat } = await import('../src/detect');
+  expect(detectFormat(CUT_MULTILINE_LOG)).toBe('json');
+  const { buildTree } = await import('../src/tree');
+  const t = buildTree(CUT_MULTILINE_LOG, 'json');
+  expect(t.root?.type).toBe('object');
+  expect(JSON.stringify(t.root)).toContain('requestId');
+});
+
+test('끝 잘림+문자열 안 줄바꿈: 뒤에 다른 레코드가 있으면 기존 줄 단위 경로 유지', () => {
+  const log = CUT_MULTILINE_LOG.split('\n')[0] + '\ny request body={"ok":1}';
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.some((b) => b.includes('"ok"'))).toBe(true); // 뒤 레코드가 문자열로 빨려들면 안 됨
+  expect(blocks.some((b) => b.includes('"ok":1') === false && b.includes('ok'))).not.toBe(undefined);
+});
+
+test('로그 접두어의 [DEBUG]·[uuid] 대괄호는 전체 꼬리 복구를 막지 않는다', () => {
+  const log =
+    '2026-08-10 17:36:05.171 [DEBUG] [MainThread] dispatch:[6c6e22e0-e4c2] body={"success":true,"data":{"v":["첫 줄\n둘째 줄"]},"requestId":"a65f86ae","payload":{"runId":"6c6e-';
+  const r = formatJson(log);
+  expect(r.output).toContain('"success": true');
+  expect(r.output).toContain('"requestId": "a65f86ae"');
+});
