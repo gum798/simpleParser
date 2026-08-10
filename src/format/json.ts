@@ -451,6 +451,7 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
   if (depth > 40) return [];
   const out: JsonSpan[] = [];
   let from = 0;
+  let firstRecover = -1; // 첫 잘린 블록 시작(후처리 전체-꼬리 복구의 기준점)
   for (;;) {
     const { spans, recoverFrom } = scanTopLevel(text, from);
     for (const [s, e] of spans) {
@@ -467,32 +468,29 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
       }
     }
     if (recoverFrom === null) break;
-    // 로거가 잘라버린(끝까지 닫히지 않는) 블록/문자열. 복구 후보를 우선순위대로 시도한다.
-    // 이후 텍스트는 재귀로 처리하므로 이 지점에서 항상 break — 잘린 줄이 아주 많으면(깊이 40+)
-    // 그 너머는 버려진다(현실적 상한).
+    // 로거가 잘라버린(끝까지 닫히지 않는) 블록/문자열. 그 줄만 보충 복구를 시도하고
+    // 다음 줄부터 재탐색한다(from 단조 증가 → 종료 보장, 잘린 줄 수 제한 없음).
     const nl = text.indexOf('\n', recoverFrom);
     const regionEnd = nl === -1 ? text.length : nl;
     const isBlockStart = text[recoverFrom] === '{' || text[recoverFrom] === '[';
-    // 후보 A: 잘린 '그 줄'만 닫는 괄호를 보충해 살린다(기존)
-    const lineSalvage = isBlockStart ? completeTruncatedJson(text.slice(recoverFrom, regionEnd)) : null;
-    const pushLineSalvage = (): void => {
-      if (lineSalvage)
+    if (firstRecover === -1 && isBlockStart) firstRecover = recoverFrom; // 후처리 D의 기준점
+    // 후보 A: 잘린 '그 줄'만 닫는 괄호를 보충해 살린다
+    if (isBlockStart) {
+      const done = completeTruncatedJson(text.slice(recoverFrom, regionEnd));
+      if (done)
         out.push({
-          text: lineSalvage.text,
+          text: done.text,
           start: base + recoverFrom,
           origLen: regionEnd - recoverFrom,
-          appended: lineSalvage.appended,
-          trimmed: lineSalvage.trimmed,
+          appended: done.appended,
+          trimmed: done.trimmed,
         });
-    };
-    if (nl === -1) {
-      pushLineSalvage();
-      break;
     }
-    // 후보 B(기존): 중간이 잘린 문서의 꼬리 키-값 조각을 '{'로 묶어 복원 —
+    if (nl === -1) break;
+    // 후보 B: 중간이 잘린 문서의 꼬리 키-값 조각을 '{'로 묶어 복원 —
     // 고아 클로저 줄들 뒤의 나머지가 통째로 파싱되면(문서의 마지막 닫는 괄호가 짝) 채택.
     let t = nl + 1;
-    let wrappedSpan: JsonSpan | null = null;
+    let wrappedTail = false;
     for (let attempts = 0; attempts < 20 && t < text.length; attempts++) {
       for (;;) {
         // 고아 클로저(닫는 괄호·콤마)만 있는 줄과 빈 줄은 건너뛴다 — 소실된 중간의 잔해
@@ -508,54 +506,41 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
       if (t >= text.length || !/^\s*"/.test(text.slice(t, t + 80))) break; // 키-값 조각 모양이 아님
       const wrappedText = '{' + text.slice(t);
       if (parsesAsJson(wrappedText)) {
-        wrappedSpan = {
+        out.push({
           text: wrappedText,
-          start: t - 1, // '{'를 앞에 붙였으므로 한 칸 앞 — 자식 오프셋이 원본과 1:1로 맞는다
+          start: base + t - 1, // '{'를 붙인 한 칸 앞(base 포함!) — 자식 오프셋이 원본과 1:1
           origLen: text.length - t + 1,
           appended: 1,
           wrapped: true,
-        };
+        });
+        wrappedTail = true;
         break;
       }
       const le = text.indexOf('\n', t);
       if (le === -1) break;
       t = le + 1; // 이 줄을 조각에서 제외하고 다음 줄부터 재시도
     }
-    if (wrappedSpan) {
-      pushLineSalvage();
-      out.push(wrappedSpan);
-      break;
+    if (wrappedTail) break; // 나머지 전체를 꼬리 블록으로 소비
+    from = nl + 1;
+  }
+  // 후처리 D: 첫 잘린 블록 '이후'에서 아무 스팬도 못 건졌다면(뒤가 전부 같은 블록의 잔해),
+  // 남은 전체를 '랩 줄바꿈 낀 잘린 블록'으로 통째 복구한다 — 로거가 \n을 그대로 찍은
+  // 응답이 끝에서 잘린 경우. 잘린/온전한 레코드가 뒤따르면 위 루프가 이미 스팬을 만들어
+  // 여기 조건이 막히므로 레코드를 삼키지 않는다.
+  if (firstRecover !== -1 && !out.some((sp) => sp.start > base + firstRecover)) {
+    const rep = repairJsonStringNewlines(text.slice(firstRecover));
+    const done = rep.removed.length > 0 ? completeTruncatedJson(rep.text) : null;
+    if (done) {
+      while (out.length > 0 && out[out.length - 1].start >= base + firstRecover) out.pop(); // 부분(A) 스팬 대체
+      out.push({
+        text: done.text,
+        start: base + firstRecover,
+        origLen: text.length - firstRecover,
+        appended: done.appended,
+        trimmed: done.trimmed,
+        removed: rep.removed,
+      });
     }
-    // 후보 C: 남은 줄들을 기존 방식으로 재탐색 — 실제 레코드(비보충 스팬)가 있으면 그쪽 우선
-    const tailSpans = extractJsonSpans(text.slice(nl + 1), base + nl + 1, depth + 1);
-    if (tailSpans.some((s2) => !s2.appended)) {
-      pushLineSalvage();
-      out.push(...tailSpans);
-      break;
-    }
-    // 후보 D(신규): 남은 전체를 '랩 줄바꿈 낀 잘린 블록'으로 통째 복구 — 로거가 \n을
-    // 그대로 찍은 응답이 끝에서 잘린 경우. 실제 레코드가 뒤따르면 C가 이미 이겼으므로
-    // 여기 도달 = 꼬리 전체가 한 블록의 잔해라는 뜻.
-    if (isBlockStart) {
-      const whole = text.slice(recoverFrom);
-      const rep = repairJsonStringNewlines(whole);
-      const done = rep.removed.length > 0 ? completeTruncatedJson(rep.text) : null;
-      if (done) {
-        out.push({
-          text: done.text,
-          start: base + recoverFrom,
-          origLen: text.length - recoverFrom,
-          appended: done.appended,
-          trimmed: done.trimmed,
-          removed: rep.removed,
-        });
-        break;
-      }
-    }
-    // 폴백: 기존 동작(그 줄 보충 + 재탐색 조각들)
-    pushLineSalvage();
-    out.push(...tailSpans);
-    break;
   }
   return out;
 }

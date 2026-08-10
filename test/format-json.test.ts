@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { formatJson, parseJsonTolerant, extractJsonBlocks } from '../src/format/json';
+import { formatJson, parseJsonTolerant, extractJsonBlocks, extractJsonSpans } from '../src/format/json';
 import { format } from '../src/format/index';
 
 test('유효 JSON은 2칸 들여쓰기로 정렬', () => {
@@ -433,4 +433,44 @@ test('로그 접두어의 [DEBUG]·[uuid] 대괄호는 전체 꼬리 복구를 �
   const r = formatJson(log);
   expect(r.output).toContain('"success": true');
   expect(r.output).toContain('"requestId": "a65f86ae"');
+});
+
+// ── 검증 에이전트 확정 결함 3건 회귀 테스트 ──
+
+test('잘린 줄 뒤 중간잘림 문서: 스팬 겹침 없이 원본 보존 + 멱등(base 누락 회귀)', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log = [
+    't1 resp body={"id":821,"arr":[1,2',
+    't2 resp body={"id":822,"deep":{"a":[{"b":"컷',
+    '  "error": null,',
+    '  "id": 823,',
+    '  "ts": "2026-08-10"',
+    '}',
+  ].join('\n');
+  const spans = extractJsonSpans(log);
+  for (let i = 1; i < spans.length; i++) {
+    const prevEnd = spans[i - 1].start + (spans[i - 1].origLen ?? spans[i - 1].text.length);
+    expect(spans[i].start).toBeGreaterThanOrEqual(prevEnd); // 겹침 금지
+  }
+  const once = formatJsonInPlace(log).output ?? log;
+  expect((once.match(/"error"/g) ?? []).length).toBe(1); // 중복 복제 금지
+  const twice = formatJsonInPlace(once).output ?? once;
+  expect(twice).toBe(once); // 멱등
+});
+
+test('잘린 줄 50개도 전부 복구된다(깊이 상한 무고지 소실 회귀)', () => {
+  const log = Array.from({ length: 50 }, (_, i) => `t${i} resp body={"i":${i},"v":[1,2`).join('\n');
+  expect(extractJsonBlocks(log).length).toBe(50);
+});
+
+test('잘린 응답이 연속되면 각각 복구 — 전체 꼬리 복구가 삼키지 않는다', () => {
+  const log = [
+    '10:00:01 resp body={"id":1,"msg":"첫 번째 응답 본문이 길어서',
+    '10:00:02 resp body={"id":2,"msg":"두 번째 응답 본문이 길어서',
+    '10:00:03 resp body={"id":3,"msg":"세 번째 응답 본문이 길어서',
+  ].join('\n');
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.length).toBe(3);
+  const b2 = blocks.find((b) => b.includes('"id":2'))!;
+  expect(b2.includes('10:00:03')).toBe(false); // 다음 레코드 접두어가 값으로 빨려들면 안 됨
 });
