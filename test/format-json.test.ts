@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { formatJson, parseJsonTolerant, extractJsonBlocks } from '../src/format/json';
+import { formatJson, parseJsonTolerant, extractJsonBlocks, extractJsonSpans } from '../src/format/json';
 import { format } from '../src/format/index';
 
 test('유효 JSON은 2칸 들여쓰기로 정렬', () => {
@@ -391,4 +391,86 @@ test('제자리 정렬: 이미 줄 첫머리에 있는 블록 앞엔 빈 줄을 
   const once = formatJsonInPlace('log body={"x":1} end').output!;
   expect(formatJsonInPlace(once).output ?? once).toBe(once); // 두 번째 정렬 무변화
   expect(once).not.toContain('=\n\n'); // 이중 개행 없음
+});
+
+// ── 끝이 잘린 + 문자열 안 실제 줄바꿈 조합(로거가 \n을 그대로 출력한 응답) ──
+
+const CUT_MULTILINE_LOG = [
+  'x response_body status=200 body={"success":true,"data":{"collected":[{"key":"taskContent","value":["시스템 구축',
+  'DT Hub는 게이트웨이로 활용하며 연계 인프라를 제공함',
+  '개발 환경 Amazon EC2 (t3.large), Nginx :80/:8000',
+  'CI/CD Pipeline AWS CodePipeline","아키텍처 설계·구축(연동 포함)","운영 체계 수립"]}]},"requestId":"a65f86ae","payload":{"runId":"6c6e22e0-e4c2-3293-b0d4-',
+].join('\n');
+
+test('끝 잘림+문자열 안 줄바꿈: 전체 꼬리를 통째로 복구(줄에서 끊지 않음)', () => {
+  const r = formatJson(CUT_MULTILINE_LOG);
+  expect(r.output).toContain('"success": true');
+  expect(r.output).toContain('"taskContent"'); // 줄바꿈 낀 문자열 너머까지
+  expect(r.output).toContain('"requestId": "a65f86ae"'); // 꼬리 필드
+  expect(r.output).toContain('"runId": "6c6e22e0-e4c2-3293-b0d4-"'); // 잘린 값은 있는 데까지
+  expect(r.output).toContain('아키텍처 설계·구축(연동 포함)'); // 배열 나머지 원소 보존
+});
+
+test('끝 잘림+문자열 안 줄바꿈: 감지·트리도 정상(markdown/스칼라 아님)', async () => {
+  const { detectFormat } = await import('../src/detect');
+  expect(detectFormat(CUT_MULTILINE_LOG)).toBe('json');
+  const { buildTree } = await import('../src/tree');
+  const t = buildTree(CUT_MULTILINE_LOG, 'json');
+  expect(t.root?.type).toBe('object');
+  expect(JSON.stringify(t.root)).toContain('requestId');
+});
+
+test('끝 잘림+문자열 안 줄바꿈: 뒤에 다른 레코드가 있으면 기존 줄 단위 경로 유지', () => {
+  const log = CUT_MULTILINE_LOG.split('\n')[0] + '\ny request body={"ok":1}';
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.some((b) => b.includes('"ok"'))).toBe(true); // 뒤 레코드가 문자열로 빨려들면 안 됨
+  expect(blocks.some((b) => b.includes('"ok":1') === false && b.includes('ok'))).not.toBe(undefined);
+});
+
+test('로그 접두어의 [DEBUG]·[uuid] 대괄호는 전체 꼬리 복구를 막지 않는다', () => {
+  const log =
+    '2026-08-10 17:36:05.171 [DEBUG] [MainThread] dispatch:[6c6e22e0-e4c2] body={"success":true,"data":{"v":["첫 줄\n둘째 줄"]},"requestId":"a65f86ae","payload":{"runId":"6c6e-';
+  const r = formatJson(log);
+  expect(r.output).toContain('"success": true');
+  expect(r.output).toContain('"requestId": "a65f86ae"');
+});
+
+// ── 검증 에이전트 확정 결함 3건 회귀 테스트 ──
+
+test('잘린 줄 뒤 중간잘림 문서: 스팬 겹침 없이 원본 보존 + 멱등(base 누락 회귀)', async () => {
+  const { formatJsonInPlace } = await import('../src/format/json');
+  const log = [
+    't1 resp body={"id":821,"arr":[1,2',
+    't2 resp body={"id":822,"deep":{"a":[{"b":"컷',
+    '  "error": null,',
+    '  "id": 823,',
+    '  "ts": "2026-08-10"',
+    '}',
+  ].join('\n');
+  const spans = extractJsonSpans(log);
+  for (let i = 1; i < spans.length; i++) {
+    const prevEnd = spans[i - 1].start + (spans[i - 1].origLen ?? spans[i - 1].text.length);
+    expect(spans[i].start).toBeGreaterThanOrEqual(prevEnd); // 겹침 금지
+  }
+  const once = formatJsonInPlace(log).output ?? log;
+  expect((once.match(/"error"/g) ?? []).length).toBe(1); // 중복 복제 금지
+  const twice = formatJsonInPlace(once).output ?? once;
+  expect(twice).toBe(once); // 멱등
+});
+
+test('잘린 줄 50개도 전부 복구된다(깊이 상한 무고지 소실 회귀)', () => {
+  const log = Array.from({ length: 50 }, (_, i) => `t${i} resp body={"i":${i},"v":[1,2`).join('\n');
+  expect(extractJsonBlocks(log).length).toBe(50);
+});
+
+test('잘린 응답이 연속되면 각각 복구 — 전체 꼬리 복구가 삼키지 않는다', () => {
+  const log = [
+    '10:00:01 resp body={"id":1,"msg":"첫 번째 응답 본문이 길어서',
+    '10:00:02 resp body={"id":2,"msg":"두 번째 응답 본문이 길어서',
+    '10:00:03 resp body={"id":3,"msg":"세 번째 응답 본문이 길어서',
+  ].join('\n');
+  const blocks = extractJsonBlocks(log);
+  expect(blocks.length).toBe(3);
+  const b2 = blocks.find((b) => b.includes('"id":2'))!;
+  expect(b2.includes('10:00:03')).toBe(false); // 다음 레코드 접두어가 값으로 빨려들면 안 됨
 });

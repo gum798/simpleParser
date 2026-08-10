@@ -91,7 +91,14 @@ export function resolveJson(text: string): JsonResolution {
     // 보충 스팬'만' 있는 경우는 문서에 다른 JSON 구조 흔적(균형 스팬·괄호 불일치)이
     // 전혀 없을 때만 채택 — 깨진 통짜 문서의 관용 전체 복구를 조각이 밀어내지 않게.
     const hasReal = blockSpans.some((b) => !b.appended);
-    const salvageOnlyOk = spans.length === 0 && !mismatched;
+    // 보호 대상은 'JSON 모양'(따옴표/중첩으로 시작) 균형 스팬뿐 — 로그 접두어의
+  // [DEBUG]·[uuid] 같은 junk 대괄호가 게이트를 잠그면 안 된다.
+  const jsonShaped = spans.some(([a]) => {
+    let j = a + 1;
+    while (j < text.length && /\s/.test(text[j])) j++;
+    return text[j] === '"' || text[j] === '{' || text[j] === '[';
+  });
+  const salvageOnlyOk = !mismatched && !jsonShaped;
     // 꼬리 복원이 성립했다는 건 '잘린 한 문서'라는 강한 증거 — 관용 복구보다 낫다
     const hasWrapped = blockSpans.some((b) => b.wrapped);
     if (blockSpans.length > 0 && (hasReal || salvageOnlyOk || hasWrapped)) {
@@ -217,6 +224,7 @@ export function formatJsonInPlace(text: string): FormatResult {
       }
       emitBlock(prettyPrintJsonTokens(s.text));
       pos = s.start + origLen;
+      removedNewlines += s.removed?.length ?? 0; // 전체 꼬리 복구 스팬의 랩 줄바꿈 제거도 고지
       continue;
     }
     const origLen = s.origLen ?? s.text.length + (s.removed?.length ?? 0);
@@ -443,6 +451,7 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
   if (depth > 40) return [];
   const out: JsonSpan[] = [];
   let from = 0;
+  let firstRecover = -1; // 첫 잘린 블록 시작(후처리 전체-꼬리 복구의 기준점)
   for (;;) {
     const { spans, recoverFrom } = scanTopLevel(text, from);
     for (const [s, e] of spans) {
@@ -459,15 +468,16 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
       }
     }
     if (recoverFrom === null) break;
-    // 로거가 잘라버린(끝까지 닫히지 않는) 블록/문자열: 그 줄만 건너뛰고 다음 줄부터
-    // 새 상태로 재탐색 — 잘린 한 줄이 이후 문서 전체를 삼키지 않게 한다(from은 단조 증가 → 종료 보장).
+    // 로거가 잘라버린(끝까지 닫히지 않는) 블록/문자열. 그 줄만 보충 복구를 시도하고
+    // 다음 줄부터 재탐색한다(from 단조 증가 → 종료 보장, 잘린 줄 수 제한 없음).
     const nl = text.indexOf('\n', recoverFrom);
     const regionEnd = nl === -1 ? text.length : nl;
-    // 잘린 블록 자체도 살린다: 닫는 괄호를 보충해 유효해지면 '보충 복구' 스팬으로 추가.
-    // (원본 유지 정렬은 appended 표시를 보고 이 블록을 건너뛴다 — 괄호를 지어내지 않기 위해)
-    if (text[recoverFrom] === '{' || text[recoverFrom] === '[') {
+    const isBlockStart = text[recoverFrom] === '{' || text[recoverFrom] === '[';
+    if (firstRecover === -1 && isBlockStart) firstRecover = recoverFrom; // 후처리 D의 기준점
+    // 후보 A: 잘린 '그 줄'만 닫는 괄호를 보충해 살린다
+    if (isBlockStart) {
       const done = completeTruncatedJson(text.slice(recoverFrom, regionEnd));
-      if (done) {
+      if (done)
         out.push({
           text: done.text,
           start: base + recoverFrom,
@@ -475,12 +485,10 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
           appended: done.appended,
           trimmed: done.trimmed,
         });
-      }
     }
     if (nl === -1) break;
-    // 중간이 잘린 문서의 꼬리 복원: 고아 클로저 줄들 뒤의 나머지가 `"key": …` 조각이고
-    // '{' 하나만 앞에 붙여 통째로 파싱되면(문서 자신의 마지막 닫는 괄호가 짝) 한 블록으로 살린다.
-    // 로그 레코드가 뒤따르면 파싱이 실패해 발동하지 않는다(기존 줄 단위 재탐색 유지).
+    // 후보 B: 중간이 잘린 문서의 꼬리 키-값 조각을 '{'로 묶어 복원 —
+    // 고아 클로저 줄들 뒤의 나머지가 통째로 파싱되면(문서의 마지막 닫는 괄호가 짝) 채택.
     let t = nl + 1;
     let wrappedTail = false;
     for (let attempts = 0; attempts < 20 && t < text.length; attempts++) {
@@ -500,7 +508,7 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
       if (parsesAsJson(wrappedText)) {
         out.push({
           text: wrappedText,
-          start: t - 1, // '{'를 앞에 붙였으므로 한 칸 앞 — 자식 오프셋이 원본과 1:1로 맞는다
+          start: base + t - 1, // '{'를 붙인 한 칸 앞(base 포함!) — 자식 오프셋이 원본과 1:1
           origLen: text.length - t + 1,
           appended: 1,
           wrapped: true,
@@ -514,6 +522,25 @@ export function extractJsonSpans(text: string, base = 0, depth = 0): JsonSpan[] 
     }
     if (wrappedTail) break; // 나머지 전체를 꼬리 블록으로 소비
     from = nl + 1;
+  }
+  // 후처리 D: 첫 잘린 블록 '이후'에서 아무 스팬도 못 건졌다면(뒤가 전부 같은 블록의 잔해),
+  // 남은 전체를 '랩 줄바꿈 낀 잘린 블록'으로 통째 복구한다 — 로거가 \n을 그대로 찍은
+  // 응답이 끝에서 잘린 경우. 잘린/온전한 레코드가 뒤따르면 위 루프가 이미 스팬을 만들어
+  // 여기 조건이 막히므로 레코드를 삼키지 않는다.
+  if (firstRecover !== -1 && !out.some((sp) => sp.start > base + firstRecover)) {
+    const rep = repairJsonStringNewlines(text.slice(firstRecover));
+    const done = rep.removed.length > 0 ? completeTruncatedJson(rep.text) : null;
+    if (done) {
+      while (out.length > 0 && out[out.length - 1].start >= base + firstRecover) out.pop(); // 부분(A) 스팬 대체
+      out.push({
+        text: done.text,
+        start: base + firstRecover,
+        origLen: text.length - firstRecover,
+        appended: done.appended,
+        trimmed: done.trimmed,
+        removed: rep.removed,
+      });
+    }
   }
   return out;
 }

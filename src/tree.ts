@@ -86,7 +86,14 @@ function jsonTree(text: string): TreeResult {
   // resolveJson과 동일 게이트: 보충 스팬'만' 있는데 문서에 다른 JSON 구조 흔적(균형
   // 스팬·괄호 불일치)이 있으면 조각 트리 대신 관용 전체 트리로.
   const hasReal = blocks.some((b) => !b.appended);
-  const salvageOnlyOk = spans.length === 0 && !mismatched;
+  // 보호 대상은 'JSON 모양'(따옴표/중첩으로 시작) 균형 스팬뿐 — 로그 접두어의
+  // [DEBUG]·[uuid] 같은 junk 대괄호가 게이트를 잠그면 안 된다.
+  const jsonShaped = spans.some(([a]) => {
+    let j = a + 1;
+    while (j < text.length && /\s/.test(text[j])) j++;
+    return text[j] === '"' || text[j] === '{' || text[j] === '[';
+  });
+  const salvageOnlyOk = !mismatched && !jsonShaped;
   const hasWrapped = blocks.some((b) => b.wrapped); // 꼬리 복원 성립 = 잘린 한 문서라는 강한 증거
   if (blocks.length === 0 || (!hasReal && !salvageOnlyOk && !hasWrapped))
     return fromValue(parseJsonTolerant(text));
@@ -98,7 +105,7 @@ function jsonTree(text: string): TreeResult {
       const n = parseTree(b.text, undefined, { allowTrailingComma: true });
       if (!n) return null;
       // 보충 복구 블록: 덧붙인 닫는 괄호가 원본 밖 좌표를 만들지 않게 pos 상한을 건다
-      const cap = b.appended ? b.text.length - b.appended : undefined;
+      const cap = b.appended ? (b.origLen ?? b.text.length - b.appended) : undefined;
       const t = jsoncToTree(n, undefined, b.start, b.removed, cap);
       if (b.appended) {
         t.partial = true; // 괄호 보충/꼬리 복원 결과임을 표시(정렬 경로와 동일 신호)
